@@ -1,6 +1,6 @@
 // components/layout/TabNavigation.tsx
 import { Button } from "@/components/ui/button";
-import { Package, Search } from "lucide-react";
+import { Package, Search, FileSpreadsheet } from "lucide-react";
 import { ActiveTab } from "@/types";
 
 interface TabNavigationProps {
@@ -22,6 +22,12 @@ export default function TabNavigation({ activeTab, onTabChange, selectedCount }:
             label: "Filtrar por Excel",
             icon: Search,
             description: "Busca productos específicos"
+        },
+        {
+            id: "releases" as ActiveTab,
+            label: "Releases",
+            icon: FileSpreadsheet,
+            description: "Editar JSON"
         }
     ];
 
