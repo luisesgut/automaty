@@ -1,17 +1,16 @@
-// src/components/SeleccionResumen.tsx
-"use client";
+"use client"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
-import { Package, Truck, BarChart3, X, CheckCircle, AlertCircle } from "lucide-react";
-import type { Tarima } from "@/app/page"; // Asegúrate que la ruta a tu interfaz Tarima sea correcta
+import { Package, X, CheckCircle, AlertCircle } from "lucide-react";
+import { Tarima } from "@/types"; // Importar desde types en lugar de page
 
 interface SeleccionResumenProps {
   selectedTarimas: Tarima[];
-  onQuitarTarima: (tarima: Tarima) => void; // Esta es tu función handleSelectTarima
+  onQuitarTarima: (tarima: Tarima) => void;
   totalCajas: number;
   cantidadTotalFormateada: string;
   totalPesoBruto: number;
@@ -19,134 +18,81 @@ interface SeleccionResumenProps {
 }
 
 export default function SeleccionResumen({
-  selectedTarimas,
-  onQuitarTarima,
-  totalCajas,
-  cantidadTotalFormateada,
-  totalPesoBruto,
-  totalPesoNeto,
-}: SeleccionResumenProps) {
-  
-  if (selectedTarimas.length === 0) { // No mostrar nada si no hay selección
-    return null;
-  }
+                                           selectedTarimas,
+                                           onQuitarTarima,
+                                           totalCajas,
+                                           cantidadTotalFormateada,
+                                           totalPesoBruto,
+                                           totalPesoNeto
+                                         }: SeleccionResumenProps) {
+  if (selectedTarimas.length === 0) return null;
 
   return (
-    // ESTE ES EL CÓDIGO QUE TÚ PEGASTE
-    <Card className="border-primary/30 bg-primary/5 dark:bg-primary/10 dark:border-primary/40 shadow-md">
-      <CardHeader className="pb-3 pt-4">
-        <CardTitle className="text-lg flex items-center">
-          <Package className="h-5 w-5 mr-2 text-primary" />
-          Tarimas Seleccionadas ({selectedTarimas.length})
-        </CardTitle>
-        <CardDescription>Resumen de las tarimas seleccionadas para procesamiento.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
-          {/* Card Total Cajas */}
-          <Card className="dark:bg-slate-700/50 dark:border-slate-600">
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Cajas</p>
-                  <p className="text-2xl font-bold">{totalCajas}</p>
-                </div>
-                <div className="bg-blue-100 dark:bg-blue-500/20 p-2.5 rounded-full">
-                  <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          {/* Card Cantidad Total */}
-          <Card className="dark:bg-slate-700/50 dark:border-slate-600">
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-muted-foreground">Cantidad Total</p>
-                  <p className="text-2xl font-bold" style={{ wordBreak: "break-word" }}>
-                    {cantidadTotalFormateada}
-                  </p>
-                </div>
-                <div className="bg-green-100 dark:bg-green-500/20 p-2.5 rounded-full">
-                  <BarChart3 className="h-5 w-5 text-green-600 dark:text-green-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          {/* Card Peso Bruto */}
-          <Card className="dark:bg-slate-700/50 dark:border-slate-600">
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-muted-foreground">Peso Bruto</p>
-                  <p className="text-2xl font-bold">{totalPesoBruto.toLocaleString()} kg</p>
-                </div>
-                <div className="bg-yellow-100 dark:bg-yellow-500/20 p-2.5 rounded-full">
-                  <Truck className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          {/* Card Peso Neto */}
-          <Card className="dark:bg-slate-700/50 dark:border-slate-600">
-            <CardContent className="pt-4 pb-3 px-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-muted-foreground">Peso Neto</p>
-                  <p className="text-2xl font-bold">{totalPesoNeto.toLocaleString()} kg</p>
-                </div>
-                <div className="bg-indigo-100 dark:bg-indigo-500/20 p-2.5 rounded-full">
-                  <CheckCircle className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-        <ScrollArea className="h-[200px] rounded-md border dark:border-slate-600 p-1">
-          <div className="p-3">
-            <h3 className="font-medium mb-2 text-md">Detalle de la Selección:</h3>
-            {selectedTarimas.map((tarima, index) => (
-              <div key={tarima.prodEtiquetaRFIDId}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium truncate" title={tarima.nombreProducto}>{tarima.nombreProducto}</p>
-                      <Badge
-                        variant={tarima.asignadoAentrega ? "default" : "destructive"}
-                        className={`whitespace-nowrap text-xs h-fit py-0.5 px-1.5
-                                    ${tarima.asignadoAentrega ? "bg-green-500 border-green-500 text-white" : ""}`}
-                      >
-                        {tarima.asignadoAentrega ? (
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                        ) : (
-                          <AlertCircle className="h-3 w-3 mr-1" />
-                        )}
-                        {tarima.asignadoAentrega ? "Asignado" : "No asignado"}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground mt-0.5">
-                      <span>Lote: <span className="font-semibold">{tarima.lote}</span></span>
-                      <span>Item: <span className="font-semibold">{tarima.itemNumber}</span></span>
-                      <span>Cajas: <span className="font-semibold">{tarima.cajas}</span></span>
-                      <span>RFID: <span className="font-semibold">{tarima.prodEtiquetaRFIDId}</span></span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-1 sm:mt-0 text-red-500 hover:text-red-600 hover:bg-red-100/50 dark:hover:bg-red-500/10 px-2 py-1 self-start sm:self-center"
-                    onClick={() => onQuitarTarima(tarima)} // Usamos la prop
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Quitar
-                  </Button>
-                </div>
-                {index < selectedTarimas.length - 1 && <Separator className="dark:bg-slate-700" />}
-              </div>
-            ))}
+      <Card className="border-primary/30 bg-gradient-to-br from-primary/5 to-purple/5 dark:from-primary/10 dark:to-purple/10 dark:border-primary/40 shadow-xl">
+        <CardHeader className="pb-4 pt-6">
+          <CardTitle className="text-xl flex items-center">
+            <div className="bg-primary/20 p-2 rounded-lg mr-3">
+              <Package className="h-5 w-5 text-primary" />
+            </div>
+            Resumen de Selección ({selectedTarimas.length})
+          </CardTitle>
+          <CardDescription className="mt-1">
+            Tarimas seleccionadas para procesamiento
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          {/* Estadísticas rápidas */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-3 bg-blue-50 dark:bg-blue-500/10 rounded-lg">
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalCajas}</p>
+              <p className="text-xs text-muted-foreground">Total Cajas</p>
+            </div>
+            <div className="text-center p-3 bg-green-50 dark:bg-green-500/10 rounded-lg">
+              <p className="text-lg font-bold text-green-600 dark:text-green-400">{cantidadTotalFormateada}</p>
+              <p className="text-xs text-muted-foreground">Cantidad</p>
+            </div>
+            <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-500/10 rounded-lg">
+              <p className="text-xl font-bold text-yellow-600 dark:text-yellow-400">{totalPesoBruto.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Peso Bruto (kg)</p>
+            </div>
+            <div className="text-center p-3 bg-purple-50 dark:bg-purple-500/10 rounded-lg">
+              <p className="text-xl font-bold text-purple-600 dark:text-purple-400">{totalPesoNeto.toLocaleString()}</p>
+              <p className="text-xs text-muted-foreground">Peso Neto (kg)</p>
+            </div>
           </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
+
+          {/* Lista de tarimas */}
+          <ScrollArea className="h-[200px] rounded-lg border-2 dark:border-slate-600 bg-white/50 dark:bg-slate-800/50">
+            <div className="p-4">
+              {selectedTarimas.map((tarima, index) => (
+                  <div key={tarima.prodEtiquetaRFIDId}>
+                    <div className="flex items-center justify-between py-2 group hover:bg-slate-50/80 dark:hover:bg-slate-700/40 rounded-lg px-2">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-sm truncate" title={tarima.nombreProducto}>
+                          {tarima.nombreProducto}
+                        </h4>
+                        <div className="flex gap-2 text-xs text-muted-foreground mt-1">
+                          <span>Lote: {tarima.lote}</span>
+                          <span>•</span>
+                          <span>RFID: {tarima.prodEtiquetaRFIDId}</span>
+                        </div>
+                      </div>
+                      <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onQuitarTarima(tarima)}
+                          className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {index < selectedTarimas.length - 1 && <Separator className="my-1" />}
+                  </div>
+              ))}
+            </div>
+          </ScrollArea>
+        </CardContent>
+      </Card>
   );
 }
