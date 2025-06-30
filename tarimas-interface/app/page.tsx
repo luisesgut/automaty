@@ -24,6 +24,7 @@ import {
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import SeleccionResumen from "@/components/SeleccionResumen"; // Ajusta la ruta si es necesario
+import ModeToggle from "@/components/mode-toggle"
 
 
 // Actualizar la interfaz para incluir los nuevos campos
@@ -666,9 +667,10 @@ return (
             <Badge variant="outline" className="text-sm">
               {tarimas.length} tarimas disponibles
             </Badge>
-            <Button 
-  size="sm" 
-  variant="outline" 
+            <ModeToggle />
+            <Button
+  size="sm"
+  variant="outline"
   onClick={handleResetAndRefresh} // <--- CAMBIO AQUÍ
   disabled={loading} // 'loading' se refiere al estado de carga de fetchTarimas
 >
