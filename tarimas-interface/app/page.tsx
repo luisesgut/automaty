@@ -1,8 +1,31 @@
-"use client"
 
-import { useState } from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { toast } from "@/components/ui/use-toast";
+"use client";
+
+import { useState, useEffect } from "react"
+import { Textarea } from "@/components/ui/textarea"
+import FilteredResultItemDisplay from "@/components/FilteredResultItemDisplay"
+import PasteExcel from "@/components/pasteExcel"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { Search, Package, Truck, BarChart3, Loader2, X, ChevronDown, ChevronUp, RefreshCw, CheckCircle, AlertCircle } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { toast } from "@/components/ui/use-toast"
+import { Toaster } from "@/components/ui/toaster"
+import SeleccionResumen from "@/components/SeleccionResumen"
+import ModeToggle from "@/components/mode-toggle"
 
 // Hooks personalizados
 import { useTarimas } from "@/hooks/useTarimas";
@@ -256,29 +279,29 @@ export default function Home() {
     );
   }
 
-  // Mostrar error si existe
   if (error) {
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center">
-          <div className="text-center space-y-4 max-w-md mx-auto p-6">
-            <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">
-              <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">
-                Error al cargar datos
-              </h2>
-              <p className="text-red-600 dark:text-red-300 text-sm">
-                {error}
-              </p>
-            </div>
-            <button
-                onClick={fetchTarimas}
-                className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
-            >
-              Reintentar
-            </button>
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center">
+        <div className="text-center space-y-4 max-w-md mx-auto p-6">
+          <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">
+            <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">
+              Error al cargar datos
+            </h2>
+            <p className="text-red-600 dark:text-red-300 text-sm">
+              {error}
+            </p>
           </div>
+          <button
+            onClick={fetchTarimas}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
+          >
+            Reintentar
+          </button>
         </div>
+      </div>
     );
   }
+
 
   return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-50">
