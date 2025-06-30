@@ -34,7 +34,7 @@ export interface ApiFilterResponseItem {
     datos: Tarima[];
 }
 
-export type ActiveTab = "tarimas" | "excel";
+export type ActiveTab = "tarimas" | "excel" | "releases";
 
 export interface TarimasStats {
     totalCajas: number;

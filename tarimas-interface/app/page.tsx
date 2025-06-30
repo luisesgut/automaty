@@ -40,6 +40,7 @@ import TarimasTab from "@/components/tarimas/TarimasTab";
 
 // Componentes de Excel - AGREGADO
 import ExcelTab from "@/components/excel/ExcelTab";
+import ReleasesTab from "@/components/releases/ReleasesTab";
 
 // Componentes compartidos
 import ProcessModal from "@/components/shared/ProcessModal";
@@ -347,6 +348,10 @@ export default function Home() {
                   getStats={getStats}
                   getWeightInfo={getWeightInfo}
               />
+          )}
+
+          {activeTab === "releases" && (
+              <ReleasesTab />
           )}
         </main>
 
