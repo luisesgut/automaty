@@ -16,36 +16,34 @@ export const useSelection = () => {
                 // Si está seleccionada, la removemos (siempre permitido)
                 return prev.filter((item) => item.prodEtiquetaRFIDId !== tarima.prodEtiquetaRFIDId);
             } else {
-                // Si no está seleccionada, verificamos el peso antes de agregar
+                // Agregar la tarima sin restricciones de peso
                 const pesoActual = prev.reduce((sum, item) => sum + item.pesoBruto, 0);
                 const nuevoPeso = pesoActual + tarima.pesoBruto;
 
-                if (nuevoPeso > PESO_MAXIMO_KG) {
-                    // Calcular cuánto peso falta para llegar al límite
-                    const pesoDisponible = PESO_MAXIMO_KG - pesoActual;
-                    const pesoExcedente = nuevoPeso - PESO_MAXIMO_KG;
-
+                // Solo mostrar información cuando exceda el límite anterior (ya no como restricción)
+                if (nuevoPeso > PESO_MAXIMO_KG && pesoActual <= PESO_MAXIMO_KG) {
+                    // Solo mostrar la primera vez que se excede el límite informativo
                     toast({
-                        title: "⚠️ Límite de Peso Excedido",
-                        description: `No se puede agregar esta tarima. Peso actual: ${(pesoActual / 1000).toFixed(1)}T. La tarima pesa ${(tarima.pesoBruto / 1000).toFixed(1)}T y excedería el límite de ${PESO_MAXIMO_TONELADAS}T por ${(pesoExcedente / 1000).toFixed(1)}T.`,
-                        variant: "destructive",
-                    });
-
-                    return prev; // No agregar la tarima
-                }
-
-                // Mostrar advertencia cuando se acerque al límite (90% o más)
-                const porcentajePeso = (nuevoPeso / PESO_MAXIMO_KG) * 100;
-                if (porcentajePeso >= 90) {
-                    const pesoRestante = PESO_MAXIMO_KG - nuevoPeso;
-                    toast({
-                        title: "🚨 Acercándose al Límite",
-                        description: `Peso actual: ${(nuevoPeso / 1000).toFixed(1)}T de ${PESO_MAXIMO_TONELADAS}T (${porcentajePeso.toFixed(1)}%). Capacidad restante: ${(pesoRestante / 1000).toFixed(1)}T.`,
+                        title: "ℹ️ Información de Peso",
+                        description: `Has superado las ${PESO_MAXIMO_TONELADAS}T de referencia. Peso actual: ${(nuevoPeso / 1000).toFixed(1)}T. El sistema permite continuar agregando tarimas.`,
                         variant: "default",
                     });
                 }
 
-                // Agregar la tarima
+                // Mostrar notificación informativa cada 5T adicionales después del límite
+                const excesoAnterior = Math.floor((pesoActual - PESO_MAXIMO_KG) / 5000);
+                const excesoNuevo = Math.floor((nuevoPeso - PESO_MAXIMO_KG) / 5000);
+                
+                if (nuevoPeso > PESO_MAXIMO_KG && excesoNuevo > excesoAnterior && excesoNuevo > 0) {
+                    const excesoTotal = nuevoPeso - PESO_MAXIMO_KG;
+                    toast({
+                        title: `📊 Actualización de Peso`,
+                        description: `Peso actual: ${(nuevoPeso / 1000).toFixed(1)}T (exceso de ${(excesoTotal / 1000).toFixed(1)}T sobre las ${PESO_MAXIMO_TONELADAS}T de referencia).`,
+                        variant: "default",
+                    });
+                }
+
+                // Agregar la tarima (sin restricciones)
                 return [...prev, tarima];
             }
         });
@@ -93,7 +91,7 @@ export const useSelection = () => {
         };
     };
 
-    // Función auxiliar para obtener información del peso
+    // Función auxiliar para obtener información del peso (ahora solo informativo)
     const getWeightInfo = () => {
         const totalPesoBruto = selectedTarimas.reduce((sum, tarima) => sum + tarima.pesoBruto, 0);
         const porcentajeUsado = (totalPesoBruto / PESO_MAXIMO_KG) * 100;
@@ -104,8 +102,11 @@ export const useSelection = () => {
             pesoMaximo: PESO_MAXIMO_KG,
             porcentajeUsado,
             pesoRestante,
+            // Estos campos ahora son solo informativos, no restrictivos
             cercaDelLimite: porcentajeUsado >= 80,
-            enLimite: porcentajeUsado >= 95
+            enLimite: porcentajeUsado >= 95,
+            excedeReferencia: totalPesoBruto > PESO_MAXIMO_KG, // Nuevo campo para indicar si excede
+            excesoReferencia: totalPesoBruto > PESO_MAXIMO_KG ? totalPesoBruto - PESO_MAXIMO_KG : 0 // Cuánto excede
         };
     };
 

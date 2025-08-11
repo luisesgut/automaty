@@ -1,7 +1,7 @@
-// page.tsx - Actualizado con la nueva pestaña de Releases
+// page.tsx - Actualizado con filtrado de tarimas
 "use client"
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/components/ui/use-toast";
 
@@ -19,14 +19,14 @@ import TarimasTab from "@/components/tarimas/TarimasTab";
 // Componentes de Excel
 import ExcelTab from "@/components/excel/ExcelTab";
 
-// Componentes de Releases - NUEVO
+// Componentes de Releases
 import ReleasesTab from "@/components/releases/ReleasesTab";
 
 // Componentes compartidos
 import ProcessModal from "@/components/shared/ProcessModal";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 
-// Tipos - Actualizar ActiveTab para incluir releases
+// Tipos
 type ActiveTab = "tarimas" | "excel" | "releases";
 
 export default function Home() {
@@ -35,6 +35,9 @@ export default function Home() {
   const [showProcessModal, setShowProcessModal] = useState(false);
   const [processingLoading, setProcessingLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
+  
+  // NUEVO: Estado para controlar el filtro de tarimas
+  const [showAllTarimas, setShowAllTarimas] = useState(false);
 
   // Hooks personalizados
   const { tarimas, loading, error, fetchTarimas, updateTarimasStatus } = useTarimas();
@@ -44,14 +47,48 @@ export default function Home() {
     clearSelection,
     updateSelectedTarimasStatus,
     getStats,
-    getWeightInfo,
-    PESO_MAXIMO_TONELADAS
-  } = useSelection();
+    getWeightInfo
+    } = useSelection();
+
+  // NUEVO: Filtrar tarimas según el estado del switch
+  const tarimasFiltradas = useMemo(() => {
+    if (showAllTarimas) {
+      // Mostrar todas las tarimas
+      return tarimas;
+    } else {
+      // Mostrar solo las tarimas pendientes (no asignadas a entrega)
+      return tarimas.filter(tarima => !tarima.asignadoAentrega);
+    }
+  }, [tarimas, showAllTarimas]);
+
+  // NUEVO: Función para alternar el filtro
+  const handleToggleShowAll = (checked: boolean) => {
+    setShowAllTarimas(checked);
+    
+    // Limpiar selección cuando cambie el filtro
+    clearSelection();
+    
+    // Mostrar toast informativo
+    if (checked) {
+      toast({
+        title: "Mostrando todas las tarimas",
+        description: "Ahora se muestran tanto las pendientes como las ya asignadas a entrega.",
+        variant: "default",
+      });
+    } else {
+      toast({
+        title: "Mostrando solo pendientes",
+        description: "Ahora se muestran únicamente las tarimas pendientes de asignar.",
+        variant: "default",
+      });
+    }
+  };
 
   // Función para reiniciar y actualizar
   const handleResetAndRefresh = () => {
     clearSelection();
     setActiveTab("tarimas");
+    setShowAllTarimas(false); // NUEVO: Resetear también el filtro
 
     toast({
       title: "Proceso Reiniciado",
@@ -61,8 +98,9 @@ export default function Home() {
     fetchTarimas();
   };
 
-  // Función para procesar las tarimas seleccionadas
-  const processTarimas = async () => {
+  // Función para procesar las tarimas seleccionadas (ACTUALIZADA con nuevo endpoint)
+ // Función para procesar las tarimas seleccionadas (ACTUALIZADA con el nuevo formato JSON)
+const processTarimas = async () => {
     const tarimasAProcesar = selectedTarimas.filter(t => !t.asignadoAentrega);
 
     if (tarimasAProcesar.length === 0) {
@@ -119,12 +157,12 @@ export default function Home() {
       return;
     }
 
-    // Parte 2: Preparar JSON y descargar Excel - VERSIÓN CONSOLIDADA
+    // Parte 2: Crear Release usando el nuevo endpoint
     if (statusActualizadoExitosamente) {
       try {
         // Agrupar directamente por producto (PO + ItemNumber)
         const productosConsolidados: Record<string, any[]> = {};
-        
+
         for (const tarima of tarimasAProcesar) {
           const claveProducto = `${tarima.po}-${tarima.itemNumber}`;
           if (!productosConsolidados[claveProducto]) {
@@ -141,16 +179,18 @@ export default function Home() {
           const totalPallets = tarimasDelProducto.length;
           const cajasPorPallet = primeraTarima.cajas;
 
-          // Campos actualizados según el nuevo formato
+          // NUEVO: Recopilar todos los RFIDId y unirlos en una cadena
+          const trazabilidades = JSON.stringify(tarimasDelProducto.map(t => t.lote));
+          // Campos para el nuevo formato
           const company = "BioFlex";
           const shipDate = new Date().toISOString();
-          const unitPrice = 0.0;
           const quantityAlreadyShipped = "0";
           const itemType = "Finished Good";
           const salesCSRNames = "Equipo Ventas";
           const unitsPerCase = primeraTarima.individualUnits || 0;
           const sapValue = primeraTarima.ordenSAP || "";
           const claveProducto = primeraTarima.claveProducto || "";
+          const precioPorUnidad = 0;
 
           if (!sapValue || sapValue.trim() === "") {
             console.warn(`ADVERTENCIA: El campo SAP (ordenSAP) está vacío para PO: ${primeraTarima.po}, Item: ${primeraTarima.itemNumber}`);
@@ -172,71 +212,62 @@ export default function Home() {
             netWeight: totalPesoNeto,
             itemType: itemType,
             salesCSRNames: salesCSRNames,
+            trazabilidades: trazabilidades, // NUEVO: Se agrega el campo trazabilidades
+            precioPorUnidad: precioPorUnidad
           };
         });
 
-        // CREAR UNA SOLA TABLA CONSOLIDADA
+        // Preparar el payload para el nuevo endpoint
         const fechaActual = new Date().toISOString().split('T')[0];
-        const tablasParaExcel = [{
-          tableName: `BioFlex - Release ${fechaActual}`,
-          shippingItems: itemsDeEnvioConsolidados,
-        }];
-
-        const payloadExcel = { tables: tablasParaExcel };
+        const nombreRelease = `Release_Consolidado_${fechaActual}`;
         
+        // --- INICIO DEL CAMBIO IMPORTANTE ---
+        // El array `shippingItems` ahora va directamente en el payload, sin anidarlo en `excelData`.
+        const payloadRelease = {
+          fileName: `${nombreRelease}.xlsx`,
+          description: `Release consolidado generado automáticamente el ${fechaActual}`,
+          notes: `Release creado con ${tarimasAProcesar.length} tarimas procesadas (${Object.keys(productosConsolidados).length} productos únicos)`,
+          createdBy: "Sistema Web",
+          shippingItems: itemsDeEnvioConsolidados, // El array consolidado se asigna directamente aquí.
+        };
+        // --- FIN DEL CAMBIO IMPORTANTE ---
+
         // IMPRIMIR JSON EN CONSOLA PARA DEBUG
-        console.log("🚀 JSON que se envía al backend:");
-        console.log(JSON.stringify(payloadExcel, null, 2));
-        
-        const nombreArchivoSugerido = `Release_Consolidado_${fechaActual}.xlsx`;
-        const urlExcel = `http://172.16.10.31/api/vwStockDestiny/downloadRelease?fileName=${encodeURIComponent(nombreArchivoSugerido)}`;
+        console.log("🚀 JSON que se envía al nuevo endpoint /create:");
+        console.log(JSON.stringify(payloadRelease, null, 2));
 
-        const responseExcel = await fetch(urlExcel, {
+        // Llamar al NUEVO endpoint
+        const urlCreateRelease = "http://172.16.10.31/api/ReleaseDestiny/create";
+        
+        const responseCreate = await fetch(urlCreateRelease, {
           method: 'POST',
           headers: {
             'accept': '*/*',
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(payloadExcel),
+          body: JSON.stringify(payloadRelease),
         });
 
-        if (!responseExcel.ok) {
-          const errorMsg = await responseExcel.text();
-          throw new Error(`Error al generar Excel: ${responseExcel.status}. ${errorMsg.substring(0, 200)}`);
+        if (!responseCreate.ok) {
+          const errorMsg = await responseCreate.text();
+          throw new Error(`Error al crear release: ${responseCreate.status}. ${errorMsg.substring(0, 200)}`);
         }
 
-        // Proceso de descarga del archivo
-        const blob = await responseExcel.blob();
-        const downloadUrl = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-
-        const disposition = responseExcel.headers.get('content-disposition');
-        let finalFileName = nombreArchivoSugerido;
-        if (disposition && disposition.indexOf('attachment') !== -1) {
-          const filenameMatch = disposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-          if (filenameMatch && filenameMatch[1]) {
-            finalFileName = filenameMatch[1].replace(/['"]/g, '');
-          }
-        }
-        link.download = finalFileName;
-
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(downloadUrl);
+        // Obtener la respuesta del servidor
+        const releaseResponse = await responseCreate.json();
+        console.log("✅ Respuesta del servidor:", releaseResponse);
 
         toast({
-          title: "Excel Consolidado Generado",
-          description: `El archivo ${finalFileName} con todas las tarimas en una sola tabla se ha descargado exitosamente.`,
+          title: "Release Creado Exitosamente",
+          description: `Se ha creado el release "${nombreRelease}" con ${tarimasAProcesar.length} tarimas procesadas.`,
           variant: "default",
         });
 
       } catch (err) {
-        console.error("Error en la generación/descarga de Excel:", err);
+        console.error("Error en la creación del release:", err);
         toast({
-          title: "Error al Generar Excel",
-          description: err instanceof Error ? err.message : "Error desconocido al generar el archivo Excel.",
+          title: "Error al Crear Release",
+          description: err instanceof Error ? err.message : "Error desconocido al crear el release.",
           variant: "destructive",
         });
       }
@@ -245,7 +276,6 @@ export default function Home() {
     setProcessingLoading(false);
     setShowProcessModal(false);
   };
-
   // Mostrar pantalla de carga inicial
   if (loading && tarimas.length === 0) {
     return (
@@ -290,7 +320,7 @@ export default function Home() {
 
         {/* Header */}
         <Header
-            totalTarimas={tarimas.length}
+            totalTarimas={tarimas.length} // Mostrar total real de tarimas
             onRefresh={handleResetAndRefresh}
             isLoading={loading}
         />
@@ -306,7 +336,7 @@ export default function Home() {
         <main className="container mx-auto py-6 px-4">
           {activeTab === "tarimas" && (
               <TarimasTab
-                  tarimas={tarimas}
+                  tarimas={tarimasFiltradas} // USAR TARIMAS FILTRADAS
                   selectedTarimas={selectedTarimas}
                   onSelectTarima={handleSelectTarima}
                   onClearSelection={clearSelection}
@@ -314,6 +344,11 @@ export default function Home() {
                   loading={loading}
                   getStats={getStats}
                   getWeightInfo={getWeightInfo}
+                  // NUEVAS PROPS para el filtro
+                  showAllTarimas={showAllTarimas}
+                  onToggleShowAll={handleToggleShowAll}
+                  totalTarimasCount={tarimas.length}
+                  filteredTarimasCount={tarimasFiltradas.length}
               />
           )}
 
@@ -330,7 +365,6 @@ export default function Home() {
               />
           )}
 
-          {/* NUEVA PESTAÑA DE RELEASES */}
           {activeTab === "releases" && (
               <ReleasesTab />
           )}

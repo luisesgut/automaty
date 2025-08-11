@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle, AlertCircle, Lock } from "lucide-react";
 import { Tarima } from "@/types";
 
 interface TarimasTableProps {
@@ -20,31 +20,30 @@ interface TarimasTableProps {
         pesoRestante: number;
         cercaDelLimite: boolean;
         enLimite: boolean;
+        excedeReferencia?: boolean;
+        excesoReferencia?: number;
     };
+    showAllTarimas: boolean;
 }
 
 export default function TarimasTable({
-                                         tarimas,
-                                         filteredTarimas,
-                                         selectedTarimas,
-                                         searchTerm,
-                                         loading,
-                                         onSelectTarima,
-                                         weightInfo
-                                     }: TarimasTableProps) {
+    tarimas,
+    filteredTarimas,
+    selectedTarimas,
+    searchTerm,
+    loading,
+    onSelectTarima,
+    weightInfo,
+    showAllTarimas
+}: TarimasTableProps) {
     const isTarimaSelected = (prodEtiquetaRFIDId: number) => {
         return selectedTarimas.some((tarima) => tarima.prodEtiquetaRFIDId === prodEtiquetaRFIDId);
     };
 
-    // Función para verificar si una tarima puede ser seleccionada
+    // Función simplificada - ahora solo verifica si está asignada a entrega
     const canSelectTarima = (tarima: Tarima) => {
-        if (!weightInfo) return true;
-
-        const isSelected = isTarimaSelected(tarima.prodEtiquetaRFIDId);
-        if (isSelected) return true; // Siempre se puede deseleccionar
-
-        const nuevoPeso = weightInfo.totalPesoBruto + tarima.pesoBruto;
-        return nuevoPeso <= weightInfo.pesoMaximo;
+        // Solo restricción: no se puede seleccionar si ya está asignada a entrega
+        return !tarima.asignadoAentrega;
     };
 
     return (
@@ -55,8 +54,17 @@ export default function TarimasTable({
                     {filteredTarimas.length} de {tarimas.length} tarimas encontradas
                     {searchTerm && (
                         <span className="ml-2 bg-primary/10 text-primary px-2 py-1 rounded-full text-xs font-medium">
-              Filtro: "{searchTerm}"
-            </span>
+                            Filtro: "{searchTerm}"
+                        </span>
+                    )}
+                    <span className="ml-2 bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded-full text-xs font-medium">
+                        {showAllTarimas ? "Todas las tarimas" : "Solo pendientes"}
+                    </span>
+                    {/* Nuevo indicador informativo sobre peso */}
+                    {weightInfo && weightInfo.excedeReferencia && (
+                        <span className="ml-2 bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400 px-2 py-1 rounded-full text-xs font-medium">
+                            ⚠️ Peso por encima de referencia
+                        </span>
                     )}
                 </CardDescription>
             </CardHeader>
@@ -112,7 +120,9 @@ export default function TarimasTable({
                                                         <p className="text-sm text-muted-foreground">
                                                             {searchTerm
                                                                 ? `No hay coincidencias para "${searchTerm}"`
-                                                                : "No hay tarimas disponibles en este momento"
+                                                                : showAllTarimas 
+                                                                  ? "No hay tarimas disponibles en este momento"
+                                                                  : "No hay tarimas pendientes. Activa 'Mostrar todas' para ver las asignadas."
                                                             }
                                                         </p>
                                                     </div>
@@ -122,23 +132,37 @@ export default function TarimasTable({
                                     ) : (
                                         filteredTarimas.map((tarima, index) => {
                                             const isSelected = isTarimaSelected(tarima.prodEtiquetaRFIDId);
+                                            const canSelect = canSelectTarima(tarima);
+                                            const isAssigned = tarima.asignadoAentrega;
+                                            
                                             return (
                                                 <TableRow
                                                     key={tarima.prodEtiquetaRFIDId}
                                                     className={`transition-all duration-200 cursor-pointer hover:shadow-sm
-                                    ${isSelected
-                                                        ? "bg-primary/10 dark:bg-primary/20 border-l-4 border-l-primary"
-                                                        : "hover:bg-slate-50/80 dark:hover:bg-slate-700/50"
-                                                    } ${index % 2 === 0 ? "bg-slate-25 dark:bg-slate-800/30" : ""}`}
-                                                    onClick={() => onSelectTarima(tarima)}
+                                                        ${isSelected
+                                                            ? "bg-primary/10 dark:bg-primary/20 border-l-4 border-l-primary"
+                                                            : isAssigned
+                                                              ? "bg-green-50/50 dark:bg-green-900/10 hover:bg-green-50 dark:hover:bg-green-900/20"
+                                                              : "hover:bg-slate-50/80 dark:hover:bg-slate-700/50"
+                                                        } ${index % 2 === 0 ? "bg-slate-25 dark:bg-slate-800/30" : ""}
+                                                        ${isAssigned ? "opacity-75" : ""}`}
+                                                    onClick={() => canSelect && onSelectTarima(tarima)}
                                                 >
                                                     <TableCell className="text-center">
-                                                        <Checkbox
-                                                            checked={isSelected}
-                                                            onCheckedChange={() => onSelectTarima(tarima)}
-                                                            aria-label={`Seleccionar tarima ${tarima.nombreProducto}`}
-                                                            className="transition-all duration-200"
-                                                        />
+                                                        <div className="flex items-center justify-center">
+                                                            {isAssigned && (
+                                                                <Lock className="w-3 h-3 text-slate-400 mr-1" />
+                                                            )}
+                                                            <Checkbox
+                                                                checked={isSelected}
+                                                                onCheckedChange={() => canSelect && onSelectTarima(tarima)}
+                                                                disabled={!canSelect}
+                                                                aria-label={`Seleccionar tarima ${tarima.nombreProducto}`}
+                                                                className={`transition-all duration-200 ${
+                                                                    !canSelect ? "opacity-50 cursor-not-allowed" : ""
+                                                                }`}
+                                                            />
+                                                        </div>
                                                     </TableCell>
 
                                                     <TableCell className="font-medium">
@@ -153,21 +177,21 @@ export default function TarimasTable({
                                                     </TableCell>
 
                                                     <TableCell>
-                            <span className="bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded text-sm font-medium">
-                              {tarima.lote}
-                            </span>
+                                                        <span className="bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded text-sm font-medium">
+                                                            {tarima.lote}
+                                                        </span>
                                                     </TableCell>
 
                                                     <TableCell>
-                            <span className="font-mono text-sm bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
-                              {tarima.itemNumber}
-                            </span>
+                                                        <span className="font-mono text-sm bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
+                                                            {tarima.itemNumber}
+                                                        </span>
                                                     </TableCell>
 
                                                     <TableCell className="text-right">
-                            <span className="font-semibold text-lg">
-                              {tarima.cantidad.toLocaleString()}
-                            </span>
+                                                        <span className="font-semibold text-lg">
+                                                            {tarima.cantidad.toLocaleString()}
+                                                        </span>
                                                     </TableCell>
 
                                                     <TableCell>
@@ -179,9 +203,9 @@ export default function TarimasTable({
                                                     <TableCell className="text-center">
                                                         <div className="space-y-1">
                                                             <div className="bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
-                                <span className="font-semibold text-blue-700 dark:text-blue-300">
-                                  {tarima.cajas}
-                                </span>
+                                                                <span className="font-semibold text-blue-700 dark:text-blue-300">
+                                                                    {tarima.cajas}
+                                                                </span>
                                                             </div>
                                                             <div className="text-xs text-muted-foreground">
                                                                 {tarima.individualUnits?.toLocaleString() || "N/A"} pzs/caja
@@ -207,24 +231,24 @@ export default function TarimasTable({
                                                     </TableCell>
 
                                                     <TableCell>
-                            <span className="font-mono text-sm bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 px-2 py-1 rounded">
-                              {tarima.po}
-                            </span>
+                                                        <span className="font-mono text-sm bg-purple-50 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 px-2 py-1 rounded">
+                                                            {tarima.po}
+                                                        </span>
                                                     </TableCell>
 
                                                     <TableCell className="text-right">
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {tarima.prodEtiquetaRFIDId}
-                            </span>
+                                                        <span className="font-mono text-xs text-muted-foreground">
+                                                            {tarima.prodEtiquetaRFIDId}
+                                                        </span>
                                                     </TableCell>
 
                                                     <TableCell>
                                                         <Badge
                                                             variant={tarima.asignadoAentrega ? "default" : "outline"}
                                                             className={`whitespace-nowrap text-xs h-fit py-1.5 px-3 transition-all duration-200
-                                ${tarima.asignadoAentrega
-                                                                ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30 shadow-sm"
-                                                                : "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30"}`}
+                                                                ${tarima.asignadoAentrega
+                                                                    ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30 shadow-sm"
+                                                                    : "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30"}`}
                                                         >
                                                             {tarima.asignadoAentrega ? (
                                                                 <CheckCircle className="h-3 w-3 mr-1" />

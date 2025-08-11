@@ -2,7 +2,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Truck, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Search, Truck, ChevronDown, ChevronUp, X, Eye, EyeOff, Filter, Package } from "lucide-react";
 
 interface TarimasSearchProps {
     searchTerm: string;
@@ -20,21 +23,105 @@ interface TarimasSearchProps {
         cercaDelLimite: boolean;
         enLimite: boolean;
     };
+    // NUEVAS PROPS para el filtro de estado
+    showAllTarimas: boolean;
+    onToggleShowAll: (checked: boolean) => void;
+    totalTarimasCount: number;
+    filteredTarimasCount: number;
+    stats: {
+        pendientes: number;
+        asignadas: number;
+    };
 }
 
 export default function TarimasSearch({
-                                          searchTerm,
-                                          onSearchChange,
-                                          selectedCount,
-                                          showPreview,
-                                          onTogglePreview,
-                                          onProcess,
-                                          onClearSelection,
-                                          weightInfo
-                                      }: TarimasSearchProps) {
+    searchTerm,
+    onSearchChange,
+    selectedCount,
+    showPreview,
+    onTogglePreview,
+    onProcess,
+    onClearSelection,
+    weightInfo,
+    // Nuevas props
+    showAllTarimas,
+    onToggleShowAll,
+    totalTarimasCount,
+    filteredTarimasCount,
+    stats
+}: TarimasSearchProps) {
     return (
         <Card className="shadow-lg dark:bg-slate-800 dark:border-slate-700 bg-gradient-to-r from-white to-slate-50 dark:from-slate-800 dark:to-slate-900">
             <CardContent className="pt-6">
+                {/* Header con estadísticas generales - NUEVO */}
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <Badge variant="outline" className="text-base px-3 py-1.5">
+                            <Package className="w-4 h-4 mr-2" />
+                            {filteredTarimasCount} de {totalTarimasCount} tarimas
+                        </Badge>
+                        
+                        {selectedCount > 0 && (
+                            <Badge variant="secondary" className="text-base px-3 py-1.5 bg-blue-100 text-blue-800 border-blue-200">
+                                {selectedCount} seleccionadas
+                            </Badge>
+                        )}
+
+                        {stats.pendientes > 0 && (
+                            <Badge variant="default" className="bg-yellow-500 hover:bg-yellow-600 text-base px-3 py-1.5">
+                                {stats.pendientes} pendientes
+                            </Badge>
+                        )}
+
+                        {stats.asignadas > 0 && showAllTarimas && (
+                            <Badge variant="secondary" className="bg-green-500 hover:bg-green-600 text-white text-base px-3 py-1.5">
+                                {stats.asignadas} asignadas
+                            </Badge>
+                        )}
+                    </div>
+
+                    {/* Switch para mostrar todas las tarimas - NUEVO */}
+                    <div className="flex items-center space-x-3 bg-slate-100 dark:bg-slate-700 rounded-lg p-3">
+                        <div className="flex items-center space-x-2">
+                            {showAllTarimas ? (
+                                <Eye className="w-4 h-4 text-slate-500" />
+                            ) : (
+                                <EyeOff className="w-4 h-4 text-slate-500" />
+                            )}
+                            <Label 
+                                htmlFor="show-all-switch" 
+                                className="text-sm font-medium cursor-pointer"
+                            >
+                                Mostrar todas
+                            </Label>
+                        </div>
+                        <Switch
+                            id="show-all-switch"
+                            checked={showAllTarimas}
+                            onCheckedChange={onToggleShowAll}
+                            className="data-[state=checked]:bg-blue-600"
+                        />
+                    </div>
+                </div>
+
+                {/* Descripción del filtro actual - NUEVO */}
+                <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-700 rounded-md border-l-4 border-l-blue-500">
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                        <Filter className="w-4 h-4 inline mr-2" />
+                        {showAllTarimas ? (
+                            <>
+                                <span className="font-medium">Vista completa:</span> Mostrando todas las tarimas 
+                                ({stats.pendientes} pendientes + {stats.asignadas} ya asignadas)
+                            </>
+                        ) : (
+                            <>
+                                <span className="font-medium">Vista filtrada:</span> Mostrando solo tarimas pendientes 
+                                ({stats.pendientes} disponibles para procesar)
+                            </>
+                        )}
+                    </p>
+                </div>
+
                 <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
                     {/* Barra de búsqueda mejorada */}
                     <div className="relative w-full lg:max-w-md group">
@@ -77,8 +164,8 @@ export default function TarimasSearch({
                                     Procesar ({selectedCount})
                                     {weightInfo && (
                                         <span className="ml-2 text-xs bg-white/20 px-1 rounded">
-                      {(weightInfo.totalPesoBruto / 1000).toFixed(1)}T
-                    </span>
+                                            {(weightInfo.totalPesoBruto / 1000).toFixed(1)}T
+                                        </span>
                                     )}
                                 </Button>
 
@@ -120,8 +207,8 @@ export default function TarimasSearch({
                     <div className="mt-4 flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">Filtrando por:</span>
                         <span className="bg-primary/10 text-primary px-2 py-1 rounded-full text-xs font-medium">
-              "{searchTerm}"
-            </span>
+                            "{searchTerm}"
+                        </span>
                     </div>
                 )}
 
@@ -134,9 +221,9 @@ export default function TarimasSearch({
                                 weightInfo.enLimite ? 'text-red-600' :
                                     weightInfo.cercaDelLimite ? 'text-yellow-600' : 'text-green-600'
                             }`}>
-                {(weightInfo.totalPesoBruto / 1000).toFixed(1)}T / 20T
-                ({weightInfo.porcentajeUsado.toFixed(0)}%)
-              </span>
+                                {(weightInfo.totalPesoBruto / 1000).toFixed(1)}T / 20T
+                                ({weightInfo.porcentajeUsado.toFixed(0)}%)
+                            </span>
                         </div>
                     </div>
                 )}
