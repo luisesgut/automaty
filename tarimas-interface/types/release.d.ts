@@ -18,7 +18,7 @@ export interface ShippingItem {
   salesCSRNames: string;
   trazabilidades: string;
   destino: string;
-  idReleaseCliente?: string | null; // ⬅️ NUEVO
+  idReleaseCliente?: string | null; 
   createdDate: string;
   modifiedDate: string | null;
   modifiedBy: string;

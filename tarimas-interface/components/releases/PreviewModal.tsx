@@ -1,24 +1,26 @@
-//components/releases/PreviewModal.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
-import { Calendar, Download, Image as ImageIcon, X, FileSpreadsheet } from "lucide-react";
+import { Calendar, Download, Image as ImageIcon, X, FileSpreadsheet, Loader2 } from "lucide-react";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import html2canvas from "html2canvas";
 
-// Interfaz para los datos de preview (campos simplificados)
+// --- Interfaz actualizada SIN palletsAvailable ---
 interface PreviewItem {
   id: number;
   company: string;
-  shipDate: string;
+  nextTruckAvailable: string; // Editable
+  poNumber: string;
   customerItemNumber: string;
   itemDescription: string;
   quantityAlreadyShipped: string;
   quantityOnFloor: number;
   itemType: string;
+  salesCSRNames: string; // Editable
+  shipDate: string;
 }
 
 interface PreviewModalProps {
@@ -34,32 +36,33 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
   const [shipDate, setShipDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState<string | null>(null);
   const [downloadingExcel, setDownloadingExcel] = useState(false);
+  const [downloadingImage, setDownloadingImage] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  // Fetch datos del release
   const fetchPreviewData = async () => {
     try {
       setLoading(true);
       setError(null);
       
       const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}`);
-      
-      if (!response.ok) {
-        throw new Error(`Error al cargar datos: ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`Error al cargar datos: ${response.status}`);
       
       const data = await response.json();
       
-      // Convertir los datos a formato de preview
+      // Mapeo actualizado SIN palletsAvailable
       const previewItems: PreviewItem[] = data.shippingItems.map((item: any) => ({
         id: item.id,
         company: item.company || 'BioFlex',
-        shipDate: item.shipDate ? item.shipDate.split('T')[0] : shipDate,
+        // Se autocompleta con la fecha, pero es editable
+        nextTruckAvailable: new Date(item.shipDate || shipDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
+        poNumber: item.poNumber || '',
         customerItemNumber: item.customerItemNumber || '',
         itemDescription: item.itemDescription || '',
         quantityAlreadyShipped: item.quantityAlreadyShipped || '0',
         quantityOnFloor: item.quantityOnFloor || 0,
-        itemType: item.itemType || 'Finished Good'
+        itemType: item.itemType || 'Finished Good',
+        salesCSRNames: item.salesCSRNames || '',
+        shipDate: item.shipDate ? item.shipDate.split('T')[0] : shipDate,
       }));
       
       setItems(previewItems);
@@ -67,11 +70,7 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
     } catch (err) {
       console.error("Error fetching preview data:", err);
       setError(err instanceof Error ? err.message : "Error desconocido");
-      toast({
-        title: "Error al cargar vista previa",
-        description: err instanceof Error ? err.message : "Error desconocido",
-        variant: "destructive",
-      });
+      toast({ title: "Error al cargar vista previa", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -83,42 +82,26 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
     }
   }, [isOpen, releaseId]);
 
-  // Función para actualizar la fecha de envío en todos los items
-  const handleShipDateChange = (newDate: string) => {
-    setShipDate(newDate);
-    setItems(prev => 
-      prev.map(item => ({
-        ...item,
-        shipDate: newDate
-      }))
+  // Función para manejar la edición en la tabla
+  const handleCellChange = (itemId: number, field: keyof PreviewItem, value: string) => {
+    setItems(prevItems => 
+      prevItems.map(item => 
+        item.id === itemId ? { ...item, [field]: value } : item
+      )
     );
   };
 
-  // Función para descargar Excel desde la API
   const downloadExcel = async () => {
+    setDownloadingExcel(true);
     try {
-      setDownloadingExcel(true);
+      const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}/export-excel`);
+      if (!response.ok) throw new Error(`Error al descargar Excel: ${response.status}`);
       
-      const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}/export-excel`, {
-        method: 'GET',
-        headers: {
-          'Accept': '*/*',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Error al descargar Excel: ${response.status}`);
-      }
-
-      // Obtener el blob del archivo
       const blob = await response.blob();
-      
-      // Crear URL del blob y descargar
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       
-      // Intentar obtener el nombre del archivo desde el header Content-Disposition
       const contentDisposition = response.headers.get('content-disposition');
       let fileName = `${releaseName}_export.xlsx`;
       
@@ -135,196 +118,233 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      toast({
-        title: "¡Excel descargado!",
-        description: `El archivo ${fileName} se ha descargado exitosamente.`,
-        variant: "default",
-      });
-      
+      toast({ title: "¡Excel descargado!", description: `El archivo ${fileName} se ha descargado exitosamente.` });
     } catch (err) {
       console.error("Error downloading Excel:", err);
-      toast({
-        title: "Error al descargar Excel",
-        description: err instanceof Error ? err.message : "Error desconocido al descargar el archivo Excel",
-        variant: "destructive",
-      });
+      toast({ title: "Error al descargar Excel", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" });
     } finally {
       setDownloadingExcel(false);
     }
   };
 
-  // Función para descargar como imagen
   const downloadAsImage = async () => {
     if (!tableRef.current) return;
-
+    
+    setDownloadingImage(true);
+    
     try {
-      const canvas = await html2canvas(tableRef.current, {
+      // Obtener el elemento de la tabla
+      const tableElement = tableRef.current.querySelector('table') as HTMLElement;
+      if (!tableElement) {
+        throw new Error('No se encontró la tabla');
+      }
+
+      // Calcular el ancho total necesario
+      const tableWidth = tableElement.scrollWidth;
+      const tableHeight = tableElement.scrollHeight;
+
+      // Crear un contenedor temporal para la captura
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.top = '-9999px';
+      tempContainer.style.left = '-9999px';
+      tempContainer.style.width = `${tableWidth}px`;
+      tempContainer.style.height = `${tableHeight}px`;
+      tempContainer.style.overflow = 'visible';
+      tempContainer.style.backgroundColor = 'white';
+      tempContainer.style.padding = '16px';
+
+      // Clonar el contenido completo
+      const clonedContent = tableRef.current.cloneNode(true) as HTMLElement;
+      
+      // Remover restricciones de overflow en el clon
+      const clonedTable = clonedContent.querySelector('.overflow-x-auto') as HTMLElement;
+      if (clonedTable) {
+        clonedTable.style.overflow = 'visible';
+        clonedTable.style.width = 'auto';
+      }
+
+      tempContainer.appendChild(clonedContent);
+      document.body.appendChild(tempContainer);
+
+      // Usar html2canvas en el contenedor temporal
+      const canvas = await html2canvas(tempContainer, {
         backgroundColor: '#ffffff',
-        scale: 2,
+        scale: 1.5, // Reducir escala para mejor rendimiento
         logging: false,
         useCORS: true,
+        width: tableWidth + 32, // +32 por el padding
+        height: tableHeight + 32,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: tableWidth + 32,
+        windowHeight: tableHeight + 32,
+        onclone: (clonedDoc) => {
+          // Asegurar que todos los estilos se apliquen correctamente
+          const clonedElements = clonedDoc.querySelectorAll('*');
+          clonedElements.forEach((el) => {
+            const element = el as HTMLElement;
+            element.style.overflow = 'visible';
+          });
+        }
       });
 
-      // Crear enlace de descarga
+      // Limpiar el elemento temporal
+      document.body.removeChild(tempContainer);
+
+      // Descargar la imagen
       const link = document.createElement('a');
       link.download = `${releaseName}_preview.png`;
-      link.href = canvas.toDataURL('image/png');
+      link.href = canvas.toDataURL('image/png', 0.9);
       link.click();
 
-      toast({
-        title: "¡Descargado!",
-        description: "La imagen se ha descargado exitosamente.",
-        variant: "default",
+      toast({ 
+        title: "¡Descargado!", 
+        description: "La imagen se ha descargado exitosamente." 
       });
+
     } catch (err) {
-      toast({
-        title: "Error al descargar",
-        description: "No se pudo generar la imagen.",
-        variant: "destructive",
+      console.error('Error al descargar imagen:', err);
+      toast({ 
+        title: "Error al descargar", 
+        description: "No se pudo generar la imagen.", 
+        variant: "destructive" 
       });
+    } finally {
+      setDownloadingImage(false);
     }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl w-full h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-7xl w-full h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="border-b pb-4">
           <div className="flex justify-between items-center">
             <div>
               <DialogTitle className="text-xl">Vista Previa - {releaseName}</DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">
-                Datos formateados para exportación
+                Las celdas amarillas son editables para la captura de imagen.
               </p>
             </div>
             <div className="flex items-center space-x-2">
-              {/* Control de fecha */}
-              <div className="flex items-center space-x-2 mr-4">
-                <Calendar className="w-4 h-4 text-muted-foreground" />
-                <input
-                  type="date"
-                  value={shipDate}
-                  onChange={(e) => handleShipDateChange(e.target.value)}
-                  className="px-2 py-1 border rounded text-sm"
-                />
-              </div>
-              
-              {/* Botones de acción */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={downloadExcel}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={downloadExcel} 
                 disabled={loading || items.length === 0 || downloadingExcel}
               >
-                {downloadingExcel ? (
-                  <>
-                    <div className="w-4 h-4 mr-1 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600"></div>
-                    Descargando...
-                  </>
-                ) : (
-                  <>
-                    <FileSpreadsheet className="w-4 h-4 mr-1" />
-                    Descargar Excel
-                  </>
-                )}
+                {downloadingExcel ? 
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : 
+                  <FileSpreadsheet className="w-4 h-4 mr-1" />
+                }
+                Descargar Excel
               </Button>
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={downloadAsImage}
-                disabled={loading || items.length === 0}
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={downloadAsImage} 
+                disabled={loading || items.length === 0 || downloadingImage}
               >
-                <ImageIcon className="w-4 h-4 mr-1" />
+                {downloadingImage ? 
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : 
+                  <ImageIcon className="w-4 h-4 mr-1" />
+                }
                 Descargar Imagen
               </Button>
-              
-              <Button variant="ghost" size="sm" onClick={onClose}>
+              <Button variant="ghost" size="icon" onClick={onClose}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto bg-gray-50">
           {loading ? (
-            <LoadingSpinner
-              title="Cargando vista previa..."
-              description="Obteniendo datos del release"
-              size="md"
-              className="h-64"
-            />
+            <LoadingSpinner title="Cargando vista previa..." size="md" className="h-full" />
           ) : error ? (
             <div className="text-center py-12">
-              <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-lg max-w-md mx-auto">
-                <p className="text-red-800 dark:text-red-200 font-medium">Error al cargar datos</p>
-                <p className="text-red-600 dark:text-red-300 text-sm mt-1">{error}</p>
-              </div>
+              <p className="text-red-600">{error}</p>
             </div>
           ) : items.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground">No hay datos para mostrar</p>
+              <p>No hay datos</p>
             </div>
           ) : (
-            <div ref={tableRef} className="bg-white p-6">
-              {/* Header de la tabla */}
-              <div className="mb-4 text-center">
-                <h2 className="text-2xl font-bold text-gray-800">SHIPPING MANIFEST</h2>
-                <p className="text-gray-600">{releaseName}</p>
-                <p className="text-sm text-gray-500">
-                  Fecha de envío: {new Date(shipDate).toLocaleDateString('es-MX', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                  })}
-                </p>
+            <div ref={tableRef} className="bg-white p-4">
+              <div className="mb-2">
+                <h2 className="text-lg font-bold text-gray-800 bg-orange-200 inline-block px-4 py-1">
+                  LOAD {releaseId}
+                </h2>
               </div>
-
-              {/* Tabla */}
+              
               <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-gray-300">
-                  <thead>
-                    <tr className="bg-gray-100">
-                      <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-800">COMPAÑÍA</th>
-                      <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-800">SHIP DATE</th>
-                      <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-800">ITEM NUMBER</th>
-                      <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-800">DESCRIPCIÓN</th>
-                      <th className="border border-gray-300 px-3 py-2 text-center font-semibold text-gray-800">CANTIDAD ENVIADA</th>
-                      <th className="border border-gray-300 px-3 py-2 text-center font-semibold text-gray-800">CANTIDAD EN PISO</th>
-                      <th className="border border-gray-300 px-3 py-2 text-left font-semibold text-gray-800">TIPO ITEM</th>
+                <table className="w-full border-collapse border border-gray-400 text-sm min-w-max">
+                  <thead className="bg-gray-200">
+                    <tr className="text-gray-700 text-xs">
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">COMPANY</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">NEXT TRUCK AVAILABLE</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">PO</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">ITEM#</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">ITEM DESCRIPTION</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">QUANTITY ALREADY SHIPPED</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">QUANTITY ON FLOOR</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">ITEM TYPE</th>
+                      <th className="border border-gray-400 p-2 font-semibold whitespace-nowrap">SALES/CSR</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item, index) => (
-                      <tr key={item.id} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="border border-gray-300 px-3 py-2 text-gray-800">{item.company}</td>
-                        <td className="border border-gray-300 px-3 py-2 text-gray-800">
-                          {new Date(item.shipDate).toLocaleDateString('es-MX')}
+                    {items.map((item) => (
+                      <tr key={item.id} className="bg-white">
+                        {/* Columna Company (No editable) */}
+                        <td className="border border-gray-400 p-1 whitespace-nowrap">{item.company}</td>
+                        
+                        {/* Columna Next Truck Available (Editable) */}
+                        <td className="border border-gray-400 p-0 bg-yellow-100">
+                          <input 
+                            type="text" 
+                            value={item.nextTruckAvailable} 
+                            onChange={(e) => handleCellChange(item.id, 'nextTruckAvailable', e.target.value)} 
+                            className="w-full h-full p-1 bg-transparent focus:outline-none focus:bg-yellow-200 text-center min-w-[100px]"
+                          />
                         </td>
-                        <td className="border border-gray-300 px-3 py-2 text-gray-800 font-mono text-sm">
+
+                        {/* Columna PO (Con fondo verde) */}
+                        <td className="border border-gray-400 p-1 text-center bg-green-100 font-bold whitespace-nowrap">
+                          {item.poNumber}
+                        </td>
+                        
+                        {/* Columnas de solo lectura */}
+                        <td className="border border-gray-400 p-1 font-mono text-center whitespace-nowrap">
                           {item.customerItemNumber}
                         </td>
-                        <td className="border border-gray-300 px-3 py-2 text-gray-800">
-                          {item.itemDescription}
+                        <td className="border border-gray-400 p-1 min-w-[200px]">{item.itemDescription}</td>
+                        <td className="border border-gray-400 p-1 text-center whitespace-nowrap">
+                          {parseInt(item.quantityAlreadyShipped).toLocaleString()}
                         </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
-                          {item.quantityAlreadyShipped}
-                        </td>
-                        <td className="border border-gray-300 px-3 py-2 text-center text-gray-800">
+                        
+                        {/* Columna Quantity on Floor (Con fondo azul) */}
+                        <td className="border border-gray-400 p-1 text-center bg-blue-100 whitespace-nowrap">
                           {item.quantityOnFloor.toLocaleString()}
                         </td>
-                        <td className="border border-gray-300 px-3 py-2 text-gray-800">
-                          {item.itemType}
+                        
+                        {/* COLUMNA PALLETS AVAILABLE ELIMINADA */}
+                        
+                        {/* Columna Item Type (No editable) */}
+                        <td className="border border-gray-400 p-1 whitespace-nowrap">{item.itemType}</td>
+
+                        {/* Columna Sales/CSR (Editable) */}
+                        <td className="border border-gray-400 p-0 bg-yellow-100">
+                           <input 
+                             type="text" 
+                             value={item.salesCSRNames} 
+                             onChange={(e) => handleCellChange(item.id, 'salesCSRNames', e.target.value)} 
+                             className="w-full h-full p-1 bg-transparent focus:outline-none focus:bg-yellow-200 min-w-[120px]"
+                           />
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
-
-              {/* Footer */}
-              <div className="mt-4 text-center text-sm text-gray-500">
-                Total de items: {items.length} | Generado el {new Date().toLocaleString('es-MX')}
               </div>
             </div>
           )}

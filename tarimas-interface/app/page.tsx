@@ -1,4 +1,4 @@
-// page.tsx - Actualizado con filtrado de tarimas
+// page.tsx - Actualizado para usar descripción y notas editables
 "use client"
 
 import { useState, useMemo } from "react";
@@ -28,6 +28,7 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 
 // Tipos
 type ActiveTab = "tarimas" | "excel" | "releases";
+type ProcessingStep = "idle" | "updating-status" | "creating-release" | "completed" | "error";
 
 export default function Home() {
   // Estados principales
@@ -36,7 +37,11 @@ export default function Home() {
   const [processingLoading, setProcessingLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
   
-  // NUEVO: Estado para controlar el filtro de tarimas
+  // Estados para el proceso mejorado
+  const [processingStep, setProcessingStep] = useState<ProcessingStep>("idle");
+  const [processingMessage, setProcessingMessage] = useState<string>("");
+  
+  // Estado para controlar el filtro de tarimas
   const [showAllTarimas, setShowAllTarimas] = useState(false);
 
   // Hooks personalizados
@@ -45,30 +50,27 @@ export default function Home() {
     selectedTarimas,
     handleSelectTarima,
     clearSelection,
+    clearProcessedTarimas,
     updateSelectedTarimasStatus,
+    removeTarima,
     getStats,
     getWeightInfo
-    } = useSelection();
+  } = useSelection();
 
-  // NUEVO: Filtrar tarimas según el estado del switch
+  // Filtrar tarimas según el estado del switch
   const tarimasFiltradas = useMemo(() => {
     if (showAllTarimas) {
-      // Mostrar todas las tarimas
       return tarimas;
     } else {
-      // Mostrar solo las tarimas pendientes (no asignadas a entrega)
       return tarimas.filter(tarima => !tarima.asignadoAentrega);
     }
   }, [tarimas, showAllTarimas]);
 
-  // NUEVO: Función para alternar el filtro
+  // Función para alternar el filtro
   const handleToggleShowAll = (checked: boolean) => {
     setShowAllTarimas(checked);
-    
-    // Limpiar selección cuando cambie el filtro
     clearSelection();
     
-    // Mostrar toast informativo
     if (checked) {
       toast({
         title: "Mostrando todas las tarimas",
@@ -88,7 +90,9 @@ export default function Home() {
   const handleResetAndRefresh = () => {
     clearSelection();
     setActiveTab("tarimas");
-    setShowAllTarimas(false); // NUEVO: Resetear también el filtro
+    setShowAllTarimas(false);
+    setProcessingStep("idle");
+    setProcessingMessage("");
 
     toast({
       title: "Proceso Reiniciado",
@@ -98,9 +102,8 @@ export default function Home() {
     fetchTarimas();
   };
 
-  // Función para procesar las tarimas seleccionadas (ACTUALIZADA con nuevo endpoint)
- // Función para procesar las tarimas seleccionadas (ACTUALIZADA con el nuevo formato JSON)
-const processTarimas = async () => {
+  // Función para procesar las tarimas seleccionadas (ACTUALIZADA con descripción y notas editables)
+  const processTarimas = async (createdBy: string, description: string, notes: string) => {
     const tarimasAProcesar = selectedTarimas.filter(t => !t.asignadoAentrega);
 
     if (tarimasAProcesar.length === 0) {
@@ -113,6 +116,9 @@ const processTarimas = async () => {
     }
 
     setProcessingLoading(true);
+    setProcessingStep("updating-status");
+    setProcessingMessage(`Actualizando estado de ${tarimasAProcesar.length} tarimas...`);
+    
     let statusActualizadoExitosamente = false;
 
     // Parte 1: Actualizar el estado de las tarimas
@@ -147,19 +153,56 @@ const processTarimas = async () => {
 
     } catch (err) {
       console.error("Error al actualizar estado de tarimas:", err);
+      setProcessingStep("error");
+      setProcessingMessage("Error al actualizar estado de tarimas");
+      
       toast({
         title: "Error en Actualización de Estado",
         description: err instanceof Error ? err.message : "Error desconocido al actualizar estado.",
         variant: "destructive",
       });
-      setProcessingLoading(false);
-      setShowProcessModal(false);
+      
+      setTimeout(() => {
+        setProcessingLoading(false);
+        setShowProcessModal(false);
+        setProcessingStep("idle");
+        setProcessingMessage("");
+      }, 3000);
+      
       return;
     }
 
     // Parte 2: Crear Release usando el nuevo endpoint
     if (statusActualizadoExitosamente) {
       try {
+        setProcessingStep("creating-release");
+        setProcessingMessage("Creando release consolidado...");
+        
+        // Obtener el consecutivo del endpoint
+        const urlMaxId = "http://172.16.10.31/api/ReleaseDestiny/destiny-release-maxId";
+        
+        let consecutivo = 1;
+        
+        try {
+          const responseMaxId = await fetch(urlMaxId, {
+            method: "GET",
+            headers: {
+              "Accept": "application/json",
+            },
+          });
+
+          if (responseMaxId.ok) {
+            const maxIdResponse = await responseMaxId.json();
+            consecutivo = maxIdResponse.maxId || 1;
+            console.log(`📊 Consecutivo obtenido del servidor: ${consecutivo}`);
+          } else {
+            console.warn("No se pudo obtener el maxId, usando consecutivo por defecto");
+          }
+        } catch (maxIdError) {
+          console.error("Error al obtener maxId:", maxIdError);
+          console.warn("Usando consecutivo por defecto: 1");
+        }
+        
         // Agrupar directamente por producto (PO + ItemNumber)
         const productosConsolidados: Record<string, any[]> = {};
 
@@ -179,8 +222,9 @@ const processTarimas = async () => {
           const totalPallets = tarimasDelProducto.length;
           const cajasPorPallet = primeraTarima.cajas;
 
-          // NUEVO: Recopilar todos los RFIDId y unirlos en una cadena
+          // Recopilar todos los lotes y unirlos en una cadena JSON
           const trazabilidades = JSON.stringify(tarimasDelProducto.map(t => t.lote));
+          
           // Campos para el nuevo formato
           const company = "BioFlex";
           const shipDate = new Date().toISOString();
@@ -212,31 +256,28 @@ const processTarimas = async () => {
             netWeight: totalPesoNeto,
             itemType: itemType,
             salesCSRNames: salesCSRNames,
-            trazabilidades: trazabilidades, // NUEVO: Se agrega el campo trazabilidades
+            trazabilidades: trazabilidades,
             precioPorUnidad: precioPorUnidad
           };
         });
 
-        // Preparar el payload para el nuevo endpoint
+        // Preparar el payload con descripción y notas editables
         const fechaActual = new Date().toISOString().split('T')[0];
-        const nombreRelease = `Release_Consolidado_${fechaActual}`;
+        const nombreRelease = `LOAD_${fechaActual}-${consecutivo}`;
         
-        // --- INICIO DEL CAMBIO IMPORTANTE ---
-        // El array `shippingItems` ahora va directamente en el payload, sin anidarlo en `excelData`.
         const payloadRelease = {
           fileName: `${nombreRelease}.xlsx`,
-          description: `Release consolidado generado automáticamente el ${fechaActual}`,
-          notes: `Release creado con ${tarimasAProcesar.length} tarimas procesadas (${Object.keys(productosConsolidados).length} productos únicos)`,
-          createdBy: "Sistema Web",
-          shippingItems: itemsDeEnvioConsolidados, // El array consolidado se asigna directamente aquí.
+          description: description, // USAR LA DESCRIPCIÓN EDITADA POR EL USUARIO
+          notes: notes, // USAR LAS NOTAS EDITADAS POR EL USUARIO
+          createdBy: createdBy,
+          shippingItems: itemsDeEnvioConsolidados,
         };
-        // --- FIN DEL CAMBIO IMPORTANTE ---
 
         // IMPRIMIR JSON EN CONSOLA PARA DEBUG
-        console.log("🚀 JSON que se envía al nuevo endpoint /create:");
+        console.log("🚀 JSON que se envía al endpoint /create:");
         console.log(JSON.stringify(payloadRelease, null, 2));
 
-        // Llamar al NUEVO endpoint
+        // Llamar al endpoint
         const urlCreateRelease = "http://172.16.10.31/api/ReleaseDestiny/create";
         
         const responseCreate = await fetch(urlCreateRelease, {
@@ -257,127 +298,156 @@ const processTarimas = async () => {
         const releaseResponse = await responseCreate.json();
         console.log("✅ Respuesta del servidor:", releaseResponse);
 
+        // Marcar como completado
+        setProcessingStep("completed");
+        setProcessingMessage(`Release "${nombreRelease}" creado exitosamente`);
+
         toast({
           title: "Release Creado Exitosamente",
           description: `Se ha creado el release "${nombreRelease}" con ${tarimasAProcesar.length} tarimas procesadas.`,
           variant: "default",
         });
 
+        // Cerrar modal después de 2 segundos
+        setTimeout(() => {
+          setProcessingLoading(false);
+          setShowProcessModal(false);
+          setProcessingStep("idle");
+          setProcessingMessage("");
+          
+          // Refrescar datos
+          fetchTarimas();
+        }, 2000);
+
       } catch (err) {
         console.error("Error en la creación del release:", err);
+        setProcessingStep("error");
+        setProcessingMessage("Error al crear el release");
+        
         toast({
           title: "Error al Crear Release",
           description: err instanceof Error ? err.message : "Error desconocido al crear el release.",
           variant: "destructive",
         });
+
+        // Resetear después de 3 segundos
+        setTimeout(() => {
+          setProcessingLoading(false);
+          setShowProcessModal(false);
+          setProcessingStep("idle");
+          setProcessingMessage("");
+        }, 3000);
       }
     }
-
-    setProcessingLoading(false);
-    setShowProcessModal(false);
   };
+
   // Mostrar pantalla de carga inicial
   if (loading && tarimas.length === 0) {
     return (
-        <div className="min-h-screen">
-          <LoadingSpinner
-              title="Cargando inventario de tarimas..."
-              description="Conectando con el servidor y obteniendo datos actualizados"
-              size="lg"
-              className="h-screen"
-          />
-        </div>
+      <div className="min-h-screen">
+        <LoadingSpinner
+          title="Cargando inventario de tarimas..."
+          description="Conectando con el servidor y obteniendo datos actualizados"
+          size="lg"
+          className="h-screen"
+        />
+      </div>
     );
   }
 
   // Mostrar error si existe
   if (error) {
     return (
-        <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center">
-          <div className="text-center space-y-4 max-w-md mx-auto p-6">
-            <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">
-              <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">
-                Error al cargar datos
-              </h2>
-              <p className="text-red-600 dark:text-red-300 text-sm">
-                {error}
-              </p>
-            </div>
-            <button
-                onClick={fetchTarimas}
-                className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
-            >
-              Reintentar
-            </button>
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center">
+        <div className="text-center space-y-4 max-w-md mx-auto p-6">
+          <div className="bg-red-100 dark:bg-red-900/30 p-4 rounded-lg">
+            <h2 className="text-lg font-semibold text-red-800 dark:text-red-200 mb-2">
+              Error al cargar datos
+            </h2>
+            <p className="text-red-600 dark:text-red-300 text-sm">
+              {error}
+            </p>
           </div>
+          <button
+            onClick={fetchTarimas}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
+          >
+            Reintentar
+          </button>
         </div>
+      </div>
     );
   }
 
   return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-50">
-        <Toaster />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-50">
+      <Toaster />
 
-        {/* Header */}
-        <Header
-            totalTarimas={tarimas.length} // Mostrar total real de tarimas
-            onRefresh={handleResetAndRefresh}
-            isLoading={loading}
-        />
+      {/* Header */}
+      <Header
+        totalTarimas={tarimas.length}
+        onRefresh={handleResetAndRefresh}
+        isLoading={loading}
+      />
 
-        {/* Navigation Tabs */}
-        <TabNavigation
-            activeTab={activeTab}
-            onTabChange={setActiveTab}
-            selectedCount={selectedTarimas.length}
-        />
+      {/* Navigation Tabs */}
+      <TabNavigation
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        selectedCount={selectedTarimas.length}
+      />
 
-        {/* Main Content */}
-        <main className="container mx-auto py-6 px-4">
-          {activeTab === "tarimas" && (
-              <TarimasTab
-                  tarimas={tarimasFiltradas} // USAR TARIMAS FILTRADAS
-                  selectedTarimas={selectedTarimas}
-                  onSelectTarima={handleSelectTarima}
-                  onClearSelection={clearSelection}
-                  onProcessTarimas={() => setShowProcessModal(true)}
-                  loading={loading}
-                  getStats={getStats}
-                  getWeightInfo={getWeightInfo}
-                  // NUEVAS PROPS para el filtro
-                  showAllTarimas={showAllTarimas}
-                  onToggleShowAll={handleToggleShowAll}
-                  totalTarimasCount={tarimas.length}
-                  filteredTarimasCount={tarimasFiltradas.length}
-              />
-          )}
-
-          {activeTab === "excel" && (
-              <ExcelTab
-                  selectedTarimas={selectedTarimas}
-                  onSelectTarima={handleSelectTarima}
-                  onClearSelection={clearSelection}
-                  onProcessTarimas={() => setShowProcessModal(true)}
-                  showPreview={showPreview}
-                  onTogglePreview={() => setShowPreview(!showPreview)}
-                  getStats={getStats}
-                  getWeightInfo={getWeightInfo}
-              />
-          )}
-
-          {activeTab === "releases" && (
-              <ReleasesTab />
-          )}
-        </main>
-
-        {/* Process Modal */}
-        <ProcessModal
-            isOpen={showProcessModal}
-            onClose={() => setShowProcessModal(false)}
+      {/* Main Content */}
+      <main className="container mx-auto py-6 px-4">
+        {activeTab === "tarimas" && (
+          <TarimasTab
+            tarimas={tarimasFiltradas}
             selectedTarimas={selectedTarimas}
-            onConfirmProcess={processTarimas}
-            isProcessing={processingLoading}
-        />
-      </div>
+            onSelectTarima={handleSelectTarima}
+            onClearSelection={clearSelection}
+            onClearProcessedTarimas={clearProcessedTarimas}
+            removeTarima={removeTarima}
+            onProcessTarimas={() => setShowProcessModal(true)}
+            loading={loading}
+            getStats={getStats}
+            getWeightInfo={getWeightInfo}
+            showAllTarimas={showAllTarimas}
+            onToggleShowAll={handleToggleShowAll}
+            totalTarimasCount={tarimas.length}
+            filteredTarimasCount={tarimasFiltradas.length}
+          />
+        )}
+
+        {activeTab === "excel" && (
+          <ExcelTab
+            selectedTarimas={selectedTarimas}
+            onSelectTarima={handleSelectTarima}
+            onClearSelection={clearSelection}
+            onClearProcessedTarimas={clearProcessedTarimas}
+            removeTarima={removeTarima}
+            onProcessTarimas={() => setShowProcessModal(true)}
+            showPreview={showPreview}
+            onTogglePreview={() => setShowPreview(!showPreview)}
+            getStats={getStats}
+            getWeightInfo={getWeightInfo}
+          />
+        )}
+
+        {activeTab === "releases" && (
+          <ReleasesTab />
+        )}
+      </main>
+
+      {/* Process Modal - ACTUALIZADO para recibir descripción y notas */}
+      <ProcessModal
+        isOpen={showProcessModal}
+        onClose={() => setShowProcessModal(false)}
+        selectedTarimas={selectedTarimas}
+        onConfirmProcess={processTarimas} // Ahora recibe createdBy, description y notes
+        isProcessing={processingLoading}
+        processingStep={processingStep}
+        processingMessage={processingMessage}
+      />
+    </div>
   );
 }

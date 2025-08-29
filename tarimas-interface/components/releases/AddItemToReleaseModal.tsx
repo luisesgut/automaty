@@ -23,7 +23,7 @@ interface StockItem {
   pesoNeto: number;
   cajas: number;
   ordenSAP: string;
-  prodEtiquetaRFIDId?: number;
+  prodEtiquetaRFIDId?: number; // Este es el campo correcto
   itemNumber: string;
   individualUnits: number;
   totalUnits: number;

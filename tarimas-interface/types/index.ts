@@ -37,12 +37,20 @@ export interface ApiFilterResponseItem {
 export type ActiveTab = "tarimas" | "excel" | "releases";
 
 export interface TarimasStats {
-    totalCajas: number;
-    totalPesoBruto: number;
-    totalPesoNeto: number;
-    totalCantidad: number;
-    unidadPredominante: string;
-    cantidadFormateada: string;
+  // Campos existentes
+  totalCajas: number;
+  totalPesoBruto: number;
+  totalPesoNeto: number;
+  totalCantidad: number;
+  unidadPredominante: string;
+  cantidadFormateada: string;
+  
+  // NUEVOS campos para compatibilidad con SelectedTarimasPreview
+  totalTarimas: number;
+  productosUnicos: number;
+  totalUnidades: number;
+  tarimasPendientes: number;
+  tarimasAsignadas: number;
 }
 
 export interface ExcelState {

@@ -8,22 +8,27 @@ import ExcelDataInput from "./ExcelDataInput";
 import ExcelDataPreview from "./ExcelDataPreview";
 import ExcelResults from "./ExcelResults";
 import SelectedTarimasPreview from "../tarimas/SelectedTarimasPreview";
+import { TarimasStats } from "@/types";
 
 interface ExcelTabProps {
-    selectedTarimas: Tarima[];
-    onSelectTarima: (tarima: Tarima) => void;
-    onClearSelection: () => void;
-    onProcessTarimas: () => void;
-    showPreview: boolean;
-    onTogglePreview: () => void;
-    getStats: () => any;
-    getWeightInfo: () => any;
+  selectedTarimas: Tarima[];
+  onSelectTarima: (tarima: Tarima) => void;
+  onClearSelection: () => void;
+  onClearProcessedTarimas: () => void; // NUEVA PROP
+  removeTarima: (tarima: Tarima) => void; // NUEVA PROP
+  onProcessTarimas: () => void;
+  showPreview: boolean;
+  onTogglePreview: () => void;
+  getStats: () => TarimasStats;
+  getWeightInfo: () => any;
 }
 
 export default function ExcelTab({
                                      selectedTarimas,
                                      onSelectTarima,
                                      onClearSelection,
+                                     onClearProcessedTarimas, // NUEVA
+                                     removeTarima, // NUEVA
                                      onProcessTarimas,
                                      showPreview,
                                      onTogglePreview,
@@ -137,13 +142,14 @@ export default function ExcelTab({
                         </Button>
                     </div>
 
-                    {/* Vista previa detallada (expandible) */}
+                    {/* Vista previa detallada (expandible) - ACTUALIZADA CON NUEVAS PROPS */}
                     {showPreview && (
                         <div className="mb-8">
                             <SelectedTarimasPreview
                                 selectedTarimas={selectedTarimas}
                                 stats={stats}
-                                onRemoveTarima={onSelectTarima}
+                                onRemoveTarima={removeTarima} // USAR removeTarima EN LUGAR DE onSelectTarima
+                                onClearProcessedTarimas={onClearProcessedTarimas} // NUEVA PROP
                                 weightInfo={weightInfo}
                             />
                         </div>

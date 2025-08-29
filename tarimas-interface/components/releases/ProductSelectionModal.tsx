@@ -27,6 +27,7 @@ interface AvailableTarima {
   almacen: string;
   individualUnits?: number;
   totalUnits?: number;
+  ordenSAP?: string; // Added missing property
 }
 
 interface ProductSelectionModalProps {
@@ -174,6 +175,9 @@ export default function ProductSelectionModal({
   };
 
   // Convertir tarimas seleccionadas a ShippingItems
+// En ProductSelectionModal.tsx
+
+  // REEMPLAZA tu función convertToShippingItems con esta:
   const convertToShippingItems = (tarimas: AvailableTarima[]): ShippingItem[] => {
     // Agrupar por producto (PO + ItemNumber)
     const grouped = tarimas.reduce((acc, tarima) => {
@@ -185,53 +189,61 @@ export default function ProductSelectionModal({
       return acc;
     }, {} as Record<string, AvailableTarima[]>);
 
-    // Crear ShippingItems consolidados
-    return Object.values(grouped).map((tarimasDelProducto, index) => {
+    // Crear ShippingItems consolidados, igual que en page.tsx
+    return Object.values(grouped).map((tarimasDelProducto) => {
       const firstTarima = tarimasDelProducto[0];
       const totalPesoBruto = tarimasDelProducto.reduce((sum, t) => sum + t.pesoBruto, 0);
       const totalPesoNeto = tarimasDelProducto.reduce((sum, t) => sum + t.pesoNeto, 0);
       const totalPallets = tarimasDelProducto.length;
       const cajasPorPallet = firstTarima.cajas;
-      const trazabilidades = tarimasDelProducto.map(t => t.prodEtiquetaRFIDId).join(', ');
+      
+      // --- ✅ CORRECCIÓN 1: Trazabilidades ---
+      // Se guardan los NÚMEROS DE LOTE en formato JSON, no los RFIDs.
+      // Y nos aseguramos que sea de 13 dígitos rellenando con ceros a la izquierda si es necesario.
+      const trazabilidades = JSON.stringify(
+        tarimasDelProducto.map(t => String(t.lote).padStart(13, '0'))
+      );
 
-      console.log(`🏗️ Creando ShippingItem para ${firstTarima.nombreProducto}:`, {
-        po: firstTarima.po,
-        itemNumber: firstTarima.itemNumber,
-        pallets: totalPallets,
-        trazabilidades,
-        pesoBruto: totalPesoBruto,
-        pesoNeto: totalPesoNeto
-      });
+      // --- ✅ CORRECCIÓN 2: Campos Financieros y SAP ---
+      const unitsPerCase = firstTarima.individualUnits || 0;
+      const sapValue = firstTarima.ordenSAP || "";
+      const precioPorUnidad = 0; // Valor por defecto
+      const pesoPorPieza = unitsPerCase > 0 ? totalPesoNeto / (totalPallets * cajasPorPallet * unitsPerCase) : 0;
+      const costoTotal = 0; // Valor por defecto
+      const valorAduanal = 0; // Valor por defecto
 
       return {
-        id: Date.now() + index, // ID temporal para items nuevos
+        id: -Math.floor(Math.random() * 100000), // ID temporal negativo
         company: "BioFlex",
-        tableName: "default_table",
         shipDate: new Date().toISOString(),
         poNumber: firstTarima.po,
-        sap: "", // Se necesitaría obtener del sistema
+        sap: sapValue, // Trazabilidad ahora va en SAP
         claveProducto: firstTarima.claveProducto,
         customerItemNumber: firstTarima.itemNumber,
         itemDescription: firstTarima.nombreProducto,
         quantityAlreadyShipped: "0",
         pallets: totalPallets,
         casesPerPallet: cajasPorPallet,
-        unitsPerCase: firstTarima.individualUnits || 0,
+        unitsPerCase: unitsPerCase,
         grossWeight: totalPesoBruto,
         netWeight: totalPesoNeto,
         itemType: "Finished Good",
         salesCSRNames: "Equipo Ventas",
-        trazabilidades: trazabilidades,
-        destino: "Local",
+        trazabilidades: trazabilidades, // Lotes en formato JSON
+        
+        // Campos financieros añadidos
+        precioPorUnidad: precioPorUnidad,
+        pesoPorPieza: pesoPorPieza,
+        costoTotal: costoTotal,
+        valorAduanal: valorAduanal,
+
+        // Campos adicionales para consistencia
+        destino: "",
         quantityOnFloor: 0,
-        precioPorUnidad: 0,
-        pesoPorPieza: 0,
-        costoTotal: 0,
-        valorAduanal: 0,
         idReleaseCliente: "",
         createdDate: new Date().toISOString(),
         modifiedDate: new Date().toISOString(),
-        modifiedBy: "Sistema Web"
+        modifiedBy: ""
       };
     });
   };

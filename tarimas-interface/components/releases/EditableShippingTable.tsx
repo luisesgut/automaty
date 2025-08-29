@@ -1,272 +1,122 @@
-// src/components/releases/EditableShippingTable.tsx
 "use client";
 
-import { useState, useMemo } from "react";
-import { useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ShippingItem } from "@/types/release";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Trash2, AlertCircle, Edit3, Eye, Check, X, Package, Truck, MapPin, Plus } from "lucide-react";
+import { Trash2, AlertCircle, Edit3, Eye, Check, X, Package, Truck, MapPin, Plus, User } from "lucide-react";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Opciones predefinidas para el campo "destino"
-const destinoOptions = ["Local", "Nacional", "Internacional", "Almacén"];
+// Opciones predefinidas
+const destinoOptions = ["Yuma CA", "Salinas CA", "Bakersfield CA", "Coachella"];
+const itemTypeOptions = ["Bag No Wicket/Zipper", "Bag Wicket", "Bag Zipper", "Film"];
+const modifiedByOptions = ["Moises Jimenez", "Rebeca Franco", "Otro"];
 
-// Opciones predefinidas para el campo "itemType"
-const itemTypeOptions = ["Finished Good", "Raw Material", "Semi-Finished", "Industrial"];
-
-// Tipo de datos para el detalle del lote (EXTENDIDO)
-interface LoteDetail {
+// --- INTERFACES NECESARIAS ---
+interface StockItem {
   lote: string;
   nombreProducto: string;
-  cantidad: number;
+  itemNumber: string;
+  claveProducto: string;
   pesoBruto: number;
   pesoNeto: number;
   cajas: number;
-  po: string;
-  rfidId?: string;
-  claveProducto?: string;
-  itemNumber?: string;
-  ordenSAP?: string;
-  unidad?: string;
-  almacen?: string;
-  individualUnits?: number;
-  totalUnits?: number;
-  uom?: string;
-  asignadoAentrega?: boolean;
+  cantidad: number;
+  asignadoAentrega: boolean;
+  rfidId?: string; // Agregado para compatibilidad
+  prodEtiquetaRFIDId?: number; // Este es el campo correcto
 }
 
-// Tipo para definir el modo de búsqueda
-type SearchMode = 'rfid' | 'lote' | 'auto';
+interface TrazabilidadDetail {
+  lote: string;
+  pesoBruto: number;
+  pesoNeto: number;
+  cajas: number;
+  cantidad: number;
+}
 
-// COMPONENTE: Modal mejorado para mostrar las trazabilidades
-const TraceabilityModal = ({ 
+// --- MODAL PARA VER DETALLES DE TRAZABILIDADES (CON INFORMACIÓN COMPLETA) ---
+const TraceabilityDetailsModal = ({ 
   isOpen, 
   onClose, 
   trazabilidadesString, 
-  itemDescription,
-  onDeleteTraceability,
-  canDelete = false 
+  itemDescription
 }: {
   isOpen: boolean;
   onClose: () => void;
   trazabilidadesString: string | null;
   itemDescription: string;
-  onDeleteTraceability?: (rfidOrLote: string) => Promise<void>;
-  canDelete?: boolean;
 }) => {
   const [loading, setLoading] = useState(false);
-  const [lotes, setLotes] = useState<LoteDetail[]>([]);
-  // SIMPLIFICADO: Solo usamos modo 'lote' ya que eso es lo que guardamos en el release
-  const [currentSearchMode] = useState<'lote'>('lote');
-  const [deleteLoading, setDeleteLoading] = useState<string | null>(null);
+  const [lotes, setLotes] = useState<any[]>([]);
 
-  // Removido: Ya no necesitamos detectar el modo automáticamente
-  // useEffect(() => { ... }, [trazabilidadesString]);
-
-  // Función para buscar por RFID (método original)
-  const fetchLotesByRFID = async (rfidIds: string[]) => {
-    const urlBase = "http://172.16.10.31/api/vwStockDestiny";
-    const lotesEncontrados: LoteDetail[] = [];
-
-    for (const id of rfidIds) {
-      try {
-        const response = await fetch(`${urlBase}?rfidId=${id}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data && data.length > 0) {
-            const lote = data[0];
-            lotesEncontrados.push({
-              lote: lote.lote,
-              nombreProducto: lote.nombreProducto,
-              cantidad: lote.cantidad,
-              pesoBruto: lote.pesoBruto,
-              pesoNeto: lote.pesoNeto,
-              cajas: lote.cajas,
-              po: lote.po,
-              rfidId: id,
-              claveProducto: lote.claveProducto,
-              itemNumber: lote.itemNumber,
-              ordenSAP: lote.ordenSAP,
-              unidad: lote.unidad,
-              almacen: lote.almacen,
-              individualUnits: lote.individualUnits,
-              totalUnits: lote.totalUnits,
-              uom: lote.uom,
-              asignadoAentrega: lote.asignadoAentrega
-            });
-          }
-        }
-      } catch (error) {
-        console.error(`Error fetching lote for RFID ${id}:`, error);
-      }
-    }
-    
-    return lotesEncontrados;
-  };
-
-  // Función para buscar por lote (nuevo método)
-  const fetchLotesByLoteNumber = async (loteNumbers: string[]) => {
-    const urlBase = "http://172.16.10.31/api/vwStockDestiny";
-    const lotesEncontrados: LoteDetail[] = [];
-
-    try {
-      console.log(`🔍 Buscando por números de lote:`, loteNumbers);
-      const response = await fetch(urlBase);
-      if (response.ok) {
-        const allData = await response.json();
-        
-        // Filtrar por los números de lote buscados
-        for (const loteNumber of loteNumbers) {
-          console.log(`🔎 Buscando lote específico: ${loteNumber}`);
-          
-          const registrosDelLote = allData.filter((item: any) => {
-            const matches = item.lote === loteNumber || item.lote === loteNumber.trim();
-            if (matches) {
-              console.log(`✅ Encontrado match para ${loteNumber}:`, item.lote);
-            }
-            return matches;
-          });
-          
-          console.log(`📊 Registros encontrados para ${loteNumber}:`, registrosDelLote.length);
-          
-          for (const registro of registrosDelLote) {
-            lotesEncontrados.push({
-              lote: registro.lote,
-              nombreProducto: registro.nombreProducto,
-              cantidad: registro.cantidad,
-              pesoBruto: registro.pesoBruto,
-              pesoNeto: registro.pesoNeto,
-              cajas: registro.cajas,
-              po: registro.po,
-              rfidId: registro.prodEtiquetaRFIDId?.toString(),
-              claveProducto: registro.claveProducto,
-              itemNumber: registro.itemNumber,
-              ordenSAP: registro.ordenSAP,
-              unidad: registro.unidad,
-              almacen: registro.almacen,
-              individualUnits: registro.individualUnits,
-              totalUnits: registro.totalUnits,
-              uom: registro.uom,
-              asignadoAentrega: registro.asignadoAentrega
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Error fetching lotes by lote numbers:`, error);
-    }
-    
-    console.log(`📦 Total lotes encontrados por número:`, lotesEncontrados.length);
-    return lotesEncontrados;
-  };
-
-  // Función principal para buscar los lotes - SIMPLIFICADA
-  const fetchLotes = async () => {
+  const fetchLoteDetails = async () => {
     if (!trazabilidadesString) {
-      console.log("⚠️ No hay trazabilidades para buscar");
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    let valores: string[] = [];
-
     try {
-      valores = JSON.parse(trazabilidadesString);
-    } catch (error) {
-      console.error("Error al parsear trazabilidades:", error);
+      const response = await fetch("http://172.16.10.31/api/vwStockDestiny");
+      if (!response.ok) throw new Error("No se pudo obtener el stock");
+      const allStock: any[] = await response.json();
+
+      let lotesActuales: string[] = [];
+      try {
+        lotesActuales = JSON.parse(trazabilidadesString);
+      } catch {
+        lotesActuales = [];
+      }
+
+      const lotesConDetalles: any[] = [];
+      lotesActuales.forEach(loteNum => {
+        const stockInfo = allStock.find(s => s.lote === loteNum);
+        if (stockInfo) {
+          lotesConDetalles.push({
+            lote: stockInfo.lote,
+            nombreProducto: stockInfo.nombreProducto,
+            cantidad: stockInfo.cantidad,
+            pesoBruto: stockInfo.pesoBruto,
+            pesoNeto: stockInfo.pesoNeto,
+            cajas: stockInfo.cajas,
+            po: stockInfo.po,
+            rfidId: stockInfo.prodEtiquetaRFIDId?.toString(),
+            claveProducto: stockInfo.claveProducto,
+            itemNumber: stockInfo.itemNumber,
+            ordenSAP: stockInfo.ordenSAP,
+            unidad: stockInfo.unidad,
+            almacen: stockInfo.almacen,
+            individualUnits: stockInfo.individualUnits,
+            totalUnits: stockInfo.totalUnits,
+            uom: stockInfo.uom,
+            asignadoAentrega: stockInfo.asignadoAentrega
+          });
+        }
+      });
+      setLotes(lotesConDetalles);
+
+    } catch (err) {
+      toast({ title: "Error", description: "No se pudieron cargar los detalles.", variant: "destructive" });
+    } finally {
       setLoading(false);
-      return;
     }
-
-    console.log(`🔍 Buscando trazabilidades por NÚMERO DE LOTE:`, valores);
-    console.log(`📝 String original:`, trazabilidadesString);
-
-    // SIEMPRE buscar por número de lote
-    const lotesEncontrados = await fetchLotesByLoteNumber(valores);
-
-    // FILTRO CRÍTICO: Solo mantener lotes que están asignados a entrega (disponibles)
-    const lotesDisponibles = lotesEncontrados.filter(lote => lote.asignadoAentrega === true);
-
-    console.log(`📊 Lotes encontrados (total):`, lotesEncontrados.length);
-    console.log(`✅ Lotes disponibles (asignadoAentrega: true):`, lotesDisponibles.length);
-    console.log(`❌ Lotes filtrados (asignadoAentrega: false):`, lotesEncontrados.length - lotesDisponibles.length);
-
-    setLotes(lotesDisponibles);
-    setLoading(false);
   };
 
   useEffect(() => {
     if (isOpen) {
-      // RESETEAR todos los estados cuando se abre el modal
-      setLotes([]);
-      setDeleteLoading(null);
-      fetchLotes();
+      fetchLoteDetails();
     } else {
-      // LIMPIAR estados cuando se cierra el modal
       setLotes([]);
-      setDeleteLoading(null);
     }
   }, [isOpen, trazabilidadesString]);
 
-  // Manejar eliminación de trazabilidad del inventario
-  const handleDeleteFromInventory = async (loteDetail: LoteDetail) => {
-    // Siempre usar el número de lote para eliminar
-    const identificador = loteDetail.lote;
-    
-    setDeleteLoading(identificador);
-    
-    try {
-      // Llamar al endpoint para marcar como no asignado (eliminado del inventario)
-      const response = await fetch(
-        'http://172.16.10.31/api/LabelDestiny/UpdateProdExtrasDestinyStatusByTrazabilidad?marcado=false',
-        {
-          method: 'PUT',
-          headers: {
-            'accept': '*/*',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify([identificador])
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Error al eliminar del inventario: ${response.status}`);
-      }
-
-      // Actualizar la lista local removiendo el item
-      setLotes(prev => prev.filter(l => l.lote !== identificador));
-      
-      toast({
-        title: "Eliminado del inventario",
-        description: `Se eliminó el lote ${identificador} del inventario disponible`,
-        variant: "default",
-      });
-
-      // Si es una eliminación desde el modal de trazabilidades del item, 
-      // también actualizar las trazabilidades del item
-      if (onDeleteTraceability) {
-        await onDeleteTraceability(identificador);
-      }
-
-    } catch (error) {
-      console.error('Error al eliminar del inventario:', error);
-      toast({
-        title: "Error al eliminar",
-        description: `No se pudo eliminar el lote ${identificador} del inventario`,
-        variant: "destructive",
-      });
-    } finally {
-      setDeleteLoading(null);
-    }
-  };
-
-  // Deduplicar lotes basado en número de lote únicamente
   const uniqueLotes = useMemo(() => {
-    const lotesMap = new Map<string, LoteDetail>();
+    const lotesMap = new Map<string, any>();
     lotes.forEach(l => {
       if (!lotesMap.has(l.lote)) {
         lotesMap.set(l.lote, l);
@@ -274,7 +124,7 @@ const TraceabilityModal = ({
     });
     return Array.from(lotesMap.values());
   }, [lotes]);
-  
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[900px] w-full max-h-[80vh] overflow-hidden flex flex-col">
@@ -309,34 +159,6 @@ const TraceabilityModal = ({
                       {lote.asignadoAentrega && (
                         <Badge variant="default" className="bg-green-100 text-green-800 border-green-300">Disponible</Badge>
                       )}
-                      {/* Botón para eliminar del inventario */}
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDeleteFromInventory(lote)}
-                        disabled={deleteLoading === lote.lote}
-                        className="h-7 w-7 p-0"
-                        title="Eliminar del inventario disponible"
-                      >
-                        {deleteLoading === lote.lote ? (
-                          <div className="animate-spin h-3 w-3 border border-white border-t-transparent rounded-full" />
-                        ) : (
-                          <Trash2 className="h-3 w-3" />
-                        )}
-                      </Button>
-                      {/* Botón para eliminar solo de este release (si está habilitado) */}
-                      {canDelete && onDeleteTraceability && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onDeleteTraceability(lote.lote)}
-                          className="h-7 px-2 text-orange-600 border-orange-300 hover:bg-orange-50"
-                          title="Remover solo de este release"
-                        >
-                          <X className="h-3 w-3 mr-1" />
-                          Release
-                        </Button>
-                      )}
                     </div>
                   </div>
                   
@@ -369,7 +191,7 @@ const TraceabilityModal = ({
                     )}
                     {lote.claveProducto && (
                       <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-pink-400">
-                        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Clave:</span> 
+                        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Clave Producto:</span> 
                         <span className="text-slate-800 dark:text-slate-200">{lote.claveProducto}</span>
                       </div>
                     )}
@@ -383,6 +205,24 @@ const TraceabilityModal = ({
                       <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-teal-400">
                         <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">UOM:</span> 
                         <span className="text-slate-800 dark:text-slate-200">{lote.uom}</span>
+                      </div>
+                    )}
+                    {lote.ordenSAP && (
+                      <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-cyan-400">
+                        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Orden SAP:</span> 
+                        <span className="text-slate-800 dark:text-slate-200">{lote.ordenSAP}</span>
+                      </div>
+                    )}
+                    {lote.individualUnits && (
+                      <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-emerald-400">
+                        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Unidades Individuales:</span> 
+                        <span className="text-slate-800 dark:text-slate-200">{lote.individualUnits?.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {lote.totalUnits && (
+                      <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-violet-400">
+                        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Total Unidades:</span> 
+                        <span className="text-slate-800 dark:text-slate-200">{lote.totalUnits?.toLocaleString()}</span>
                       </div>
                     )}
                   </div>
@@ -407,14 +247,316 @@ const TraceabilityModal = ({
   );
 };
 
+// --- MODAL INTELIGENTE PARA GESTIONAR TRAZABILIDADES (del primer componente) ---
+const TraceabilityModal = ({ 
+  isOpen, 
+  onClose, 
+  item,
+  onUpdate,
+  onItemDeleted
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  item: ShippingItem;
+  onUpdate: (recalculatedItem: ShippingItem) => void;
+  onItemDeleted?: (itemId: number) => void;
+}) => {
+  const [loading, setLoading] = useState(true);
+  const [currentLotes, setCurrentLotes] = useState<string[]>([]);
+  const [loteDetails, setLoteDetails] = useState<Map<string, TrazabilidadDetail>>(new Map());
+  const [availableStock, setAvailableStock] = useState<StockItem[]>([]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("http://172.16.10.31/api/vwStockDestiny");
+      if (!response.ok) throw new Error("No se pudo obtener el stock");
+      const allStock: StockItem[] = await response.json();
+
+      let lotesActuales: string[] = [];
+      try {
+        lotesActuales = JSON.parse(item.trazabilidades || "[]");
+      } catch {
+        lotesActuales = [];
+      }
+      setCurrentLotes(lotesActuales);
+
+      const detailsMap = new Map<string, TrazabilidadDetail>();
+      lotesActuales.forEach(loteNum => {
+        const stockInfo = allStock.find(s => s.lote === loteNum);
+        if (stockInfo) {
+          detailsMap.set(loteNum, {
+            lote: loteNum,
+            pesoBruto: stockInfo.pesoBruto,
+            pesoNeto: stockInfo.pesoNeto,
+            cajas: stockInfo.cajas,
+            cantidad: stockInfo.cantidad,
+          });
+        }
+      });
+      setLoteDetails(detailsMap);
+
+      const stockParaEsteProducto = allStock.filter(stockItem => 
+        stockItem.itemNumber === item.customerItemNumber &&
+        stockItem.claveProducto === item.claveProducto &&
+        !stockItem.asignadoAentrega &&
+        !lotesActuales.includes(stockItem.lote)
+      );
+      setAvailableStock(stockParaEsteProducto);
+
+    } catch (err) {
+      toast({ title: "Error", description: "No se pudieron cargar los datos de trazabilidad.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchData();
+    }
+  }, [isOpen, item]);
+
+  const recalculateAndUpdate = (updatedLotes: string[], allDetails: Map<string, TrazabilidadDetail>) => {
+    let totalPallets = updatedLotes.length;
+    let totalGrossWeight = 0;
+    let totalNetWeight = 0;
+    let totalCases = 0;
+    let totalQuantity = 0;
+
+    updatedLotes.forEach(loteNum => {
+      const detail = allDetails.get(loteNum);
+      if (detail) {
+        totalGrossWeight += detail.pesoBruto;
+        totalNetWeight += detail.pesoNeto;
+        totalCases += detail.cajas;
+        totalQuantity += detail.cantidad;
+      }
+    });
+
+    const recalculatedItem: ShippingItem = {
+      ...item,
+      trazabilidades: JSON.stringify(updatedLotes),
+      pallets: totalPallets,
+      grossWeight: totalGrossWeight,
+      netWeight: totalNetWeight,
+      casesPerPallet: totalPallets > 0 ? Math.round(totalCases / totalPallets) : 0,
+      quantityAlreadyShipped: String(totalQuantity),
+    };
+
+    onUpdate(recalculatedItem);
+    onClose();
+  };
+
+  const handleRemoveLote = async (loteToRemove: string) => {
+    try {
+      // ALERTA: Si solo queda una trazabilidad, advertir que se eliminará el item completo
+      if (currentLotes.length === 1) {
+        const confirmed = window.confirm(
+          `⚠️ ADVERTENCIA: Esta es la única trazabilidad del item.\n\n` +
+          `Si eliminas "${loteToRemove}", el item completo "${item.itemDescription}" será eliminado permanentemente del release.\n\n` +
+          `¿Estás seguro de que quieres continuar?\n\n` +
+          `Esta acción NO se puede deshacer.`
+        );
+        
+        if (!confirmed) {
+          console.log("❌ Usuario canceló la eliminación de la última trazabilidad");
+          return;
+        }
+      }
+
+      // Primero marcar el lote como disponible en la API
+      const response = await fetch(
+        'http://172.16.10.31/api/LabelDestiny/UpdateProdExtrasDestinyStatusByTrazabilidad?marcado=false',
+        {
+          method: 'PUT',
+          headers: {
+            'accept': '*/*',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify([loteToRemove])
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Error al liberar lote del inventario: ${response.status}`);
+      }
+
+      // Actualizar el estado local
+      const updatedLotes = currentLotes.filter(l => l !== loteToRemove);
+      
+      // Si no quedan lotes, eliminar el item completo del servidor
+      if (updatedLotes.length === 0) {
+        try {
+          console.log(`Eliminando item ${item.id} del servidor porque no le quedan trazabilidades...`);
+          
+          const deleteResponse = await fetch(`http://172.16.10.31/api/ReleaseDestiny/shipping-item/${item.id}`, {
+            method: 'DELETE',
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+
+          if (deleteResponse.ok) {
+            console.log(`Item ${item.id} eliminado exitosamente del servidor`);
+            
+            toast({
+              title: "Item eliminado",
+              description: `El item "${item.itemDescription}" se eliminó porque no le quedaban trazabilidades asignadas.`,
+              variant: "default",
+            });
+            
+            // Notificar al componente padre para que actualice su lista
+            if (onItemDeleted) {
+              onItemDeleted(item.id);
+            }
+            
+          } else {
+            const errorMsg = await deleteResponse.text();
+            console.error(`Error al eliminar item ${item.id}:`, errorMsg);
+            throw new Error(`Error al eliminar item del servidor: ${deleteResponse.status}`);
+          }
+        } catch (deleteError) {
+          console.error('Error al eliminar item del servidor:', deleteError);
+          toast({
+            title: "Error al eliminar item",
+            description: "El lote se liberó pero no se pudo eliminar el item del servidor.",
+            variant: "destructive",
+          });
+        }
+        
+        onClose();
+        return;
+      }
+
+      // Recalcular y actualizar normalmente si aún quedan lotes
+      recalculateAndUpdate(updatedLotes, loteDetails);
+      
+      toast({
+        title: "Lote liberado",
+        description: `El lote ${loteToRemove} está ahora disponible para otros releases.`,
+        variant: "default",
+      });
+
+    } catch (error) {
+      console.error('Error al liberar lote:', error);
+      toast({
+        title: "Error",
+        description: `No se pudo liberar el lote ${loteToRemove}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAddLote = async (loteToAdd: StockItem) => {
+    try {
+      console.log("🔍 Estructura completa del lote a agregar:", loteToAdd);
+      console.log("🔍 Campos RFID disponibles:");
+      // Marcar el lote como asignado en la API usando el RFID ID correcto
+    const rfidToUse = loteToAdd.prodEtiquetaRFIDId?.toString() || "";      
+      if (!rfidToUse) {
+        throw new Error("No se encontró RFID ID para este lote");
+      }
+
+      const response = await fetch(
+        'http://172.16.10.31/api/LabelDestiny/UpdateProdExtrasDestinyStatus?marcado=true',
+        {
+          method: 'PUT',
+          headers: {
+            'accept': '*/*',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify([rfidToUse])
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Error al asignar lote: ${response.status}`);
+      }
+
+      // Actualizar el estado local
+      const updatedLotes = [...currentLotes, loteToAdd.lote];
+      const updatedDetails = new Map(loteDetails);
+      updatedDetails.set(loteToAdd.lote, {
+        lote: loteToAdd.lote,
+        pesoBruto: loteToAdd.pesoBruto,
+        pesoNeto: loteToAdd.pesoNeto,
+        cajas: loteToAdd.cajas,
+        cantidad: loteToAdd.cantidad,
+      });
+      
+      recalculateAndUpdate(updatedLotes, updatedDetails);
+      
+      toast({
+        title: "Lote agregado",
+        description: `El lote ${loteToAdd.lote} se agregó al release.`,
+        variant: "default",
+      });
+
+    } catch (error) {
+      console.error('Error al agregar lote:', error);
+      toast({
+        title: "Error",
+        description: `No se pudo agregar el lote ${loteToAdd.lote}`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl w-full h-[90vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Gestionar Trazabilidades para: {item?.itemDescription}</DialogTitle>
+          <DialogDescription>
+            Elimina o agrega tarimas. Los totales se recalcularán automáticamente.
+          </DialogDescription>
+        </DialogHeader>
+        
+        {loading ? <LoadingSpinner /> : (
+          <div className="grid grid-cols-2 gap-6 flex-1 overflow-hidden">
+            <div className="flex flex-col overflow-hidden border rounded-lg">
+              <h3 className="p-3 font-semibold border-b bg-slate-50 dark:bg-slate-700">Actuales en el Release ({currentLotes.length})</h3>
+              <div className="overflow-y-auto p-3 space-y-2">
+                {currentLotes.length > 0 ? currentLotes.map(lote => (
+                  <div key={lote} className="flex items-center justify-between p-2 border rounded-md">
+                    <span className="font-mono text-sm">{lote}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveLote(lote)}>
+                      <Trash2 className="w-4 h-4 text-red-500"/>
+                    </Button>
+                  </div>
+                )) : <p className="text-sm text-slate-500 text-center mt-4">No hay trazabilidades asignadas.</p>}
+              </div>
+            </div>
+            <div className="flex flex-col overflow-hidden border rounded-lg">
+              <h3 className="p-3 font-semibold border-b bg-slate-50 dark:bg-slate-700">Disponibles en Stock ({availableStock.length})</h3>
+              <div className="overflow-y-auto p-3 space-y-2">
+                {availableStock.length > 0 ? availableStock.map(stock => (
+                  <div key={stock.lote} className="flex items-center justify-between p-2 border rounded-md">
+                    <span className="font-mono text-sm">{stock.lote}</span>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleAddLote(stock)}>
+                      <Plus className="w-4 h-4 text-green-500"/>
+                    </Button>
+                  </div>
+                )) : <p className="text-sm text-slate-500 text-center mt-4">No hay stock disponible para este producto.</p>}
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// --- COMPONENTE PRINCIPAL CON DISEÑO DEL SEGUNDO Y FUNCIONALIDAD DEL PRIMERO ---
 interface EditableShippingTableProps {
   items: ShippingItem[];
   onUpdateItem: (item: ShippingItem) => void;
-  // NUEVA PROP: Para habilitar eliminación de trazabilidades
   canDeleteTraceabilities?: boolean;
-  // NUEVA PROP: Para habilitar agregar items
   releaseId?: number;
-  onItemsAdded?: () => void; // Callback para refrescar después de agregar items
+  onItemsAdded?: () => void;
+  isReadOnly?: boolean;
+  onItemDeleted?: (itemId: number) => void; // Nueva prop para manejar eliminación
 }
 
 interface EditingCell {
@@ -425,19 +567,23 @@ interface EditingCell {
 export default function EditableShippingTable({ 
   items, 
   onUpdateItem,
+  isReadOnly = false,
   canDeleteTraceabilities = false,
   releaseId,
-  onItemsAdded
+  onItemsAdded,
+  onItemDeleted
 }: EditableShippingTableProps) {
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
   const [editValue, setEditValue] = useState<string>("");
-  const [showTraceabilityModal, setShowTraceabilityModal] = useState(false);
-  const [selectedTrazabilidades, setSelectedTrazabilidades] = useState<string | null>(null);
-  const [selectedItemDescription, setSelectedItemDescription] = useState<string>("");
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
-  const [showAddItemModal, setShowAddItemModal] = useState(false);
+  const [isTraceabilityModalOpen, setIsTraceabilityModalOpen] = useState(false);
+  const [currentItemForTraceability, setCurrentItemForTraceability] = useState<ShippingItem | null>(null);
+  
+  // Estados para el modal de detalles de trazabilidades
+  const [showTraceabilityDetailsModal, setShowTraceabilityDetailsModal] = useState(false);
+  const [selectedTrazabilidadesForDetails, setSelectedTrazabilidadesForDetails] = useState<string | null>(null);
+  const [selectedItemDescriptionForDetails, setSelectedItemDescriptionForDetails] = useState<string>("");
 
-  // ACTUALIZADO: Solo campos que acepta el endpoint PUT como editables
+  // Lista de campos editables (del segundo componente)
   const editableFields: Array<{
     key: keyof ShippingItem;
     label: string;
@@ -456,20 +602,22 @@ export default function EditableShippingTable({
     { key: 'itemDescription', label: 'Descripción', type: 'text', width: 'w-48', editable: false, category: 'info' },
     
     // Campos de envío editables
-    { key: 'quantityAlreadyShipped', label: 'Cantidad Enviada', type: 'text', width: 'w-32', editable: true, icon: Truck, category: 'shipping' },
-    { key: 'pallets', label: 'Pallets', type: 'number', width: 'w-24', editable: true, icon: Package, category: 'shipping' },
-    { key: 'casesPerPallet', label: 'Cajas/Pallet', type: 'number', width: 'w-28', editable: true, icon: Package, category: 'shipping' },
-    { key: 'unitsPerCase', label: 'Unidades/Caja', type: 'number', width: 'w-32', editable: true, icon: Package, category: 'shipping' },
+    { key: 'quantityAlreadyShipped', label: 'Cantidad Enviada', type: 'text', width: 'w-32', editable: false, icon: Truck, category: 'shipping' },
+    { key: 'pallets', label: 'Pallets', type: 'number', width: 'w-24', editable: false, icon: Package, category: 'shipping' }, // No editable porque se calcula automáticamente
+    { key: 'casesPerPallet', label: 'Cajas/Pallet', type: 'number', width: 'w-28', editable: false, icon: Package, category: 'shipping' }, // No editable porque se calcula automáticamente
+    { key: 'unitsPerCase', label: 'Unidades/Caja', type: 'number', width: 'w-32', editable: false, icon: Package, category: 'shipping' },
     
-    // Pesos editables
-    { key: 'grossWeight', label: 'Peso Bruto', type: 'number', width: 'w-28', editable: true, category: 'weight' },
-    { key: 'netWeight', label: 'Peso Neto', type: 'number', width: 'w-28', editable: true, category: 'weight' },
+    // Pesos editables (aunque se calculan automáticamente, pueden ser override)
+    { key: 'grossWeight', label: 'Peso Bruto', type: 'text', width: 'w-40', editable: false, category: 'weight' }, // No editable porque se calcula automáticamente
+    { key: 'netWeight', label: 'Peso Neto', type: 'text', width: 'w-40', editable: false, category: 'weight' }, // No editable porque se calcula automáticamente
     
     // Clasificación editable
+    { key: 'idReleaseCliente', label: 'ID Release Cliente', type: 'text', width: 'w-40', editable: true, category: 'tracking' },
     { key: 'itemType', label: 'Tipo Item', type: 'select', width: 'w-32', editable: true, category: 'tracking' },
-    { key: 'salesCSRNames', label: 'Vendedor', type: 'text', width: 'w-32', editable: true, category: 'tracking' },
-    { key: 'trazabilidades', label: 'Trazabilidades', type: 'text', width: 'w-64', editable: true, category: 'tracking' },
-    { key: 'destino', label: 'Destino', type: 'select', width: 'w-28', editable: true, icon: MapPin, category: 'tracking' },
+    { key: 'salesCSRNames', label: 'Sales CSR', type: 'text', width: 'w-48', editable: true, category: 'tracking' },
+    { key: 'trazabilidades', label: 'Trazabilidades', type: 'modal', width: 'w-64', editable: true, category: 'tracking' }, // Tipo 'modal' para usar el modal inteligente
+    { key: 'destino', label: 'Destino', type: 'select', width: 'w-40', editable: true, icon: MapPin, category: 'tracking' },
+    { key: 'modifiedBy', label: 'Modificado por', type: 'select', width: 'w-40', editable: true, icon: User, category: 'info' },
     
     // Información financiera (solo lectura)
     { key: 'quantityOnFloor', label: 'Cantidad en Piso', type: 'number', width: 'w-32', editable: false, category: 'financial' },
@@ -481,10 +629,19 @@ export default function EditableShippingTable({
     // Metadatos
     { key: 'createdDate', label: 'Fecha Creación', type: 'date', width: 'w-40', editable: false, category: 'info' },
     { key: 'modifiedDate', label: 'Última Mod.', type: 'date', width: 'w-40', editable: false, category: 'info' },
-    { key: 'modifiedBy', label: 'Modificado por', type: 'text', width: 'w-32', editable: false, category: 'info' },
   ];
 
-  // Función para obtener color de categoría
+  // Función para abrir el modal inteligente de trazabilidades (del primer componente)
+  const handleOpenTraceabilityModal = (item: ShippingItem) => {
+    if (isReadOnly) {
+      toast({ title: "Release Completado", description: "No se pueden gestionar trazabilidades."});
+      return;
+    }
+    setCurrentItemForTraceability(item);
+    setIsTraceabilityModalOpen(true);
+  };
+
+  // Función para obtener color de categoría (del segundo componente)
   const getCategoryColor = (category: string) => {
     const colors = {
       info: 'bg-gray-50 dark:bg-gray-800',
@@ -496,108 +653,27 @@ export default function EditableShippingTable({
     return colors[category as keyof typeof colors] || 'bg-gray-50';
   };
 
-  // Función para manejar el clic en la celda de trazabilidad
-  const handleTraceabilityClick = (trazabilidades: string, itemDescription: string, itemId: number) => {
-    // LIMPIAR estados anteriores antes de abrir el modal
-    setSelectedTrazabilidades(null);
-    setSelectedItemDescription("");
-    setSelectedItemId(null);
-    
-    // Pequeño delay para asegurar que el estado se limpie
-    setTimeout(() => {
-      setSelectedTrazabilidades(trazabilidades);
-      setSelectedItemDescription(itemDescription);
-      setSelectedItemId(itemId);
-      setShowTraceabilityModal(true);
-    }, 10);
-  };
-
-  // NUEVA FUNCIÓN: Para eliminar una trazabilidad específica del inventario
-  const handleDeleteTraceabilityFromInventory = async (trazabilidadToDelete: string) => {
-    try {
-      // Llamar al endpoint para marcar como no asignado (eliminado del inventario)
-      const response = await fetch(
-        'http://172.16.10.31/api/LabelDestiny/UpdateProdExtrasDestinyStatusByTrazabilidad?marcado=false',
-        {
-          method: 'PUT',
-          headers: {
-            'accept': '*/*',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify([trazabilidadToDelete])
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Error al eliminar del inventario: ${response.status}`);
-      }
-
-      // También eliminarlo del release actual
-      await handleDeleteTraceability(trazabilidadToDelete);
-
-      toast({
-        title: "Eliminado del inventario",
-        description: `Se eliminó ${trazabilidadToDelete} del inventario y del release`,
-        variant: "default",
-      });
-
-    } catch (error) {
-      console.error('Error al eliminar del inventario:', error);
-      toast({
-        title: "Error al eliminar",
-        description: `No se pudo eliminar ${trazabilidadToDelete} del inventario`,
-        variant: "destructive",
-      });
-      throw error;
-    }
-  };
-
-  // NUEVA FUNCIÓN: Para eliminar una trazabilidad específica
-  const handleDeleteTraceability = async (trazabilidadToDelete: string) => {
-    if (!selectedItemId) return;
-
-    const item = items.find(i => i.id === selectedItemId);
-    if (!item) return;
-
-    try {
-      // Dividir las trazabilidades actuales
-      const currentTraceabilities = item.trazabilidades
-        .split(',')
-        .map(t => t.trim())
-        .filter(t => t);
-
-      // Filtrar la trazabilidad a eliminar
-      const updatedTraceabilities = currentTraceabilities.filter(t => t !== trazabilidadToDelete);
-
-      // Crear la nueva cadena
-      const newTrazabilidadesString = updatedTraceabilities.join(', ');
-
-      // Actualizar el item
-      const updatedItem = {
-        ...item,
-        trazabilidades: newTrazabilidadesString
-      };
-
-      // Llamar a la función de actualización
-      onUpdateItem(updatedItem);
-
-      // Actualizar el estado local del modal
-      setSelectedTrazabilidades(newTrazabilidadesString);
-
-    } catch (error) {
-      console.error('Error al eliminar trazabilidad:', error);
-      throw error; // El modal manejará el error
-    }
-  };
-
   const handleCellClick = (itemId: number, field: keyof ShippingItem) => {
+    if (isReadOnly) {
+      toast({
+        title: "Release Completado",
+        description: "No se puede editar un release que ya ha sido completado.",
+      });
+      return;
+    }
+
     const item = items.find(i => i.id === itemId);
     const fieldConfig = editableFields.find(f => f.key === field);
     
-    // Solo campos editables pueden ser editados
     if (item && fieldConfig?.editable) {
+      if (fieldConfig.type === 'modal' && field === 'trazabilidades') {
+        // Usar el modal inteligente para trazabilidades
+        handleOpenTraceabilityModal(item);
+      } else {
+        // Edición normal para otros campos
         setEditingCell({ itemId, field });
         setEditValue(String(item[field] || ''));
+      }
     }
   };
 
@@ -605,28 +681,26 @@ export default function EditableShippingTable({
     if (!editingCell) return;
 
     const item = items.find(i => i.id === editingCell.itemId);
-    if (!item) return;
-
-    const field = editableFields.find(f => f.key === editingCell.field);
-    if (!field) return;
-
-    let newValue: any = editValue;
-    
-    if (field.type === 'number') {
-      newValue = parseFloat(editValue) || 0;
+    if (!item) {
+      setEditingCell(null);
+      return;
     }
 
-    const updatedItem = {
-      ...item,
-      [editingCell.field]: newValue
-    };
+    const originalValue = String(item[editingCell.field] || '');
 
-    console.log("🔄 handleSaveEdit - Campo editado:", editingCell.field);
-    console.log("🔄 handleSaveEdit - Valor anterior:", item[editingCell.field]);
-    console.log("🔄 handleSaveEdit - Valor nuevo:", newValue);
-    console.log("🔄 handleSaveEdit - Item actualizado:", updatedItem);
+    if (editValue !== originalValue) {
+      const field = editableFields.find(f => f.key === editingCell.field);
+      if (!field) return;
 
-    onUpdateItem(updatedItem);
+      let newValue: any = editValue;
+      if (field.type === 'number') {
+        newValue = parseFloat(editValue) || 0;
+      }
+
+      const updatedItem = { ...item, [editingCell.field]: newValue };
+      onUpdateItem(updatedItem);
+    }
+
     setEditingCell(null);
     setEditValue("");
   };
@@ -655,12 +729,12 @@ export default function EditableShippingTable({
     }
 
     if (type === 'date' && typeof value === 'string') {
-        const date = new Date(value);
-        return date.toLocaleDateString('es-MX', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-        }) + ' ' + date.toLocaleTimeString('es-MX', {
-            hour: '2-digit', minute: '2-digit'
-        });
+      const date = new Date(value);
+      return date.toLocaleDateString('es-MX', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      }) + ' ' + date.toLocaleTimeString('es-MX', {
+        hour: '2-digit', minute: '2-digit'
+      });
     }
     
     return String(value);
@@ -678,7 +752,7 @@ export default function EditableShippingTable({
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-      {/* Header de la tabla */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 px-6 py-4 border-b border-slate-200 dark:border-slate-600">
         <div className="flex items-center justify-between">
           <div>
@@ -688,10 +762,9 @@ export default function EditableShippingTable({
             </p>
           </div>
           <div className="flex items-center space-x-4">
-            {/* Botón para agregar items (si está disponible) */}
             {releaseId && onItemsAdded && (
               <Button
-                onClick={() => setShowAddItemModal(true)}
+                onClick={() => {} /* Lógica para agregar items */}
                 className="bg-gradient-to-r from-green-500 to-blue-600 text-white hover:from-green-600 hover:to-blue-700 shadow-sm"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -761,13 +834,12 @@ export default function EditableShippingTable({
                 {editableFields.map((field) => {
                   const isEditing = editingCell?.itemId === item.id && editingCell?.field === field.key;
                   
-                  // Lógica de renderizado para cada tipo de campo
                   let content;
                   if (isEditing) {
-                    // Renderizado de campos editables
                     if (field.type === 'select') {
                       const options = field.key === 'destino' ? destinoOptions : 
-                                     field.key === 'itemType' ? itemTypeOptions : [];
+                                     field.key === 'itemType' ? itemTypeOptions :
+                                     field.key === 'modifiedBy' ? modifiedByOptions : [];
                       content = (
                         <div className="flex items-center space-x-2">
                           <select
@@ -777,6 +849,7 @@ export default function EditableShippingTable({
                             autoFocus
                             className="w-full px-3 py-2 text-sm border-2 border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 dark:border-blue-500 shadow-sm"
                           >
+                            <option value="">-- Selecciona --</option> 
                             {options.map(option => (
                               <option key={option} value={option}>{option}</option>
                             ))}
@@ -832,28 +905,33 @@ export default function EditableShippingTable({
                         </div>
                       );
                     }
-                  } else if (field.key === 'trazabilidades' && field.editable) {
-                    // Campo de trazabilidades editable con botón para ver detalles
+                  } else if (field.key === 'trazabilidades' && field.type === 'modal') {
+                    // Celda especial para trazabilidades que abre el modal inteligente
+                    let count = 0;
+                    try { count = JSON.parse(item.trazabilidades || "[]").length; } catch {}
                     content = (
-                      <div className="flex items-center space-x-2">
-                        <div
-                          onClick={() => handleCellClick(item.id, field.key)}
-                          className="flex-1 px-3 py-2 rounded-lg transition-all duration-200 min-h-[36px] flex items-center cursor-pointer group border-2 border-transparent hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:shadow-sm"
-                          title="Click para editar trazabilidades"
+                      <div className="flex items-center justify-center space-x-2">
+                        <Button 
+                          onClick={() => handleOpenTraceabilityModal(item)} 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={isReadOnly}
+                          className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 hover:from-blue-600 hover:to-purple-700 shadow-sm"
                         >
-                          <div className="flex items-center space-x-2 w-full">
-                            <Edit3 className="h-4 w-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <span className={`flex-1 truncate ${!item[field.key] ? 'text-slate-400 italic' : 'text-slate-900 dark:text-slate-100 font-medium'}`}>
-                              {item[field.key] ? String(item[field.key]) : 'Sin trazabilidades'}
-                            </span>
-                          </div>
-                        </div>
+                          <Edit3 className="w-4 h-4 mr-2" />
+                          Gestionar ({count})
+                        </Button>
+                        {/* Botón para ver detalles sin editar */}
                         {item.trazabilidades && (
                           <Button
-                            onClick={() => handleTraceabilityClick(item.trazabilidades, item.itemDescription, item.id)}
+                            onClick={() => {
+                              setSelectedTrazabilidadesForDetails(item.trazabilidades);
+                              setSelectedItemDescriptionForDetails(item.itemDescription);
+                              setShowTraceabilityDetailsModal(true);
+                            }}
                             variant="outline"
                             size="sm"
-                            className="h-9 px-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 hover:from-blue-600 hover:to-purple-700 shadow-sm"
+                            className="h-9 px-3 bg-gradient-to-r from-green-500 to-teal-600 text-white border-0 hover:from-green-600 hover:to-teal-700 shadow-sm"
                             title="Ver detalles de trazabilidades"
                           >
                             <Eye className="h-4 w-4 mr-1" />
@@ -863,7 +941,7 @@ export default function EditableShippingTable({
                       </div>
                     );
                   } else {
-                    // Renderizado de campos normales
+                    // Celda normal editable o de solo lectura
                     const hasValue = item[field.key] !== null && item[field.key] !== undefined && item[field.key] !== '';
                     content = (
                       <div
@@ -908,7 +986,7 @@ export default function EditableShippingTable({
         </table>
       </div>
       
-      {/* Footer con instrucciones mejoradas */}
+      {/* Footer */}
       <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 px-6 py-4 border-t border-slate-200 dark:border-slate-600">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="flex items-center space-x-3">
@@ -937,25 +1015,13 @@ export default function EditableShippingTable({
             </div>
           </div>
           
-          {canDeleteTraceabilities && (
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
-                <Trash2 className="h-4 w-4 text-red-500" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Del Inventario</span>
-              </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Elimina completamente</span>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <Package className="h-4 w-4 text-purple-500" />
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Gestión Auto</span>
             </div>
-          )}
-          
-          {canDeleteTraceabilities && (
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
-                <X className="h-4 w-4 text-orange-500" />
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Del Release</span>
-              </div>
-              <span className="text-xs text-slate-500 dark:text-slate-400">Solo remueve aquí</span>
-            </div>
-          )}
+            <span className="text-xs text-slate-500 dark:text-slate-400">Trazabilidades inteligentes</span>
+          </div>
         </div>
         
         {/* Leyenda de categorías */}
@@ -985,23 +1051,29 @@ export default function EditableShippingTable({
           </div>
         </div>
       </div>
+      {currentItemForTraceability && (
+        <TraceabilityModal
+          isOpen={isTraceabilityModalOpen}
+          onClose={() => setIsTraceabilityModalOpen(false)}
+          item={currentItemForTraceability}
+          onUpdate={onUpdateItem}
+          onItemDeleted={onItemDeleted}
+        />
+      )}
+        
       
-      {/* Modal de trazabilidades mejorado */}
-      <TraceabilityModal 
-        isOpen={showTraceabilityModal}
+      
+      {/* Modal de detalles de trazabilidades (solo lectura) */}
+      <TraceabilityDetailsModal
+        isOpen={showTraceabilityDetailsModal}
         onClose={() => {
-          setShowTraceabilityModal(false);
-          // LIMPIAR todos los estados cuando se cierra el modal
-          setTimeout(() => {
-            setSelectedTrazabilidades(null);
-            setSelectedItemDescription("");
-            setSelectedItemId(null);
-          }, 100);
+          setShowTraceabilityDetailsModal(false);
+          setSelectedTrazabilidadesForDetails(null);
+          setSelectedItemDescriptionForDetails("");
         }}
-        trazabilidadesString={selectedTrazabilidades}
-        itemDescription={selectedItemDescription}
-        onDeleteTraceability={canDeleteTraceabilities ? handleDeleteTraceability : undefined}
-        canDelete={canDeleteTraceabilities}
+        trazabilidadesString={selectedTrazabilidadesForDetails}
+        itemDescription={selectedItemDescriptionForDetails}
       />
     </div>
-  )}
+  );
+}

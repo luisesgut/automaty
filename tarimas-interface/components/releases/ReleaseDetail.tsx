@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "@/components/ui/use-toast";
-import { Eye, Edit3, Plus, Save, X, Trash2 } from "lucide-react";
+import { Eye, Edit3, Plus, Save, X, Trash2, Loader2, CheckCircle } from "lucide-react";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import EditableShippingTable from "./EditableShippingTable";
 import PreviewModal from "./PreviewModal";
@@ -28,9 +28,12 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
   const [originalItems, setOriginalItems] = useState<ShippingItem[]>([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [savingRelease, setSavingRelease] = useState(false);
+  const [updatingItemId, setUpdatingItemId] = useState<number | null>(null);
   
   // NUEVO: Estado para controlar si se están agregando productos
   const [addingProducts, setAddingProducts] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false); 
+
 
   // Fetch detalle del release
   const fetchReleaseDetail = async () => {
@@ -51,6 +54,11 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
       const allItems = data.shippingItems;
       setEditingItems([...allItems]);
       setOriginalItems([...allItems]);
+      if (data.status && data.status.toLowerCase() === 'aprobado') {
+        setIsCompleted(true);
+      } else {
+        setIsCompleted(false);
+      }
       
     } catch (err) {
       console.error("Error fetching release detail:", err);
@@ -87,10 +95,15 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
   };
 
   // Guardar cambio individual de item automáticamente
-  const handleUpdateItemWithSave = async (updatedItem: ShippingItem) => {
+ const handleUpdateItemWithSave = async (updatedItem: ShippingItem) => {
     console.log("🚀 handleUpdateItemWithSave llamado con:", updatedItem);
     
-    // Actualizar el estado local inmediatamente
+    setUpdatingItemId(updatedItem.id); // <-- 1. MOSTRAMOS EL MODAL
+
+    // Guardamos el estado anterior en caso de que necesitemos revertir
+    const previousItems = [...editingItems];
+    
+    // Actualización Optimista: Actualizamos la UI inmediatamente
     setEditingItems(prev => 
       prev.map(item => 
         item.id === updatedItem.id ? updatedItem : item
@@ -111,50 +124,39 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
         trazabilidades: updatedItem.trazabilidades || "",
         destino: updatedItem.destino || "",
         idReleaseCliente: updatedItem.idReleaseCliente || "",
-        modifiedBy: "Sistema Web"
+        modifiedBy: updatedItem.modifiedBy || "Sistema Web"
       };
 
       console.log("📦 Payload a enviar:", payload);
-      console.log("🎯 URL:", `http://172.16.10.31/api/ReleaseDestiny/shipping-item/update/${updatedItem.id}`);
 
       const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/shipping-item/update/${updatedItem.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      console.log("📡 Response status:", response.status);
-
       if (response.ok) {
-        const responseData = await response.text();
-        console.log("✅ Response exitosa:", responseData);
-        
+        console.log("✅ Actualización exitosa en el servidor");
         toast({
           title: "Campo actualizado",
           description: "El cambio se ha guardado exitosamente.",
-          variant: "default",
         });
-        
-        // Refrescar datos para asegurar sincronización
-        await fetchReleaseDetail();
+        setOriginalItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
       } else {
         const errorMsg = await response.text();
-        console.error("❌ Error response:", errorMsg);
+        setEditingItems(previousItems); // Revertimos el cambio en la UI
         throw new Error(`Error ${response.status}: ${errorMsg}`);
       }
     } catch (err) {
       console.error("💥 Error completo:", err);
       toast({
         title: "Error al guardar",
-        description: err instanceof Error ? err.message : "Error desconocido",
+        description: err instanceof Error ? err.message : "No se pudo guardar el cambio.",
         variant: "destructive",
       });
-      
-      // Revertir cambio en caso de error
-      await fetchReleaseDetail();
+      setEditingItems(previousItems); // Revertimos el cambio en la UI
+    } finally {
+      setUpdatingItemId(null); // <-- 2. OCULTAMOS EL MODAL (siempre, en éxito o error)
     }
   };
 
@@ -167,6 +169,15 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
       variant: "default",
     });
   };
+
+  const handleItemDeleted = (itemId: number) => {
+  // Actualizar el estado local para remover el item eliminado
+  setEditingItems(prev => prev.filter(item => item.id !== itemId));
+  setOriginalItems(prev => prev.filter(item => item.id !== itemId));
+  
+  // Opcional: refrescar desde el servidor para asegurar sincronización
+  // fetchReleaseDetail();
+};
 
   // Cancelar edición del release
   const handleCancelEditingRelease = () => {
@@ -240,220 +251,380 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
   };
 
   // MODIFICADO: Nueva función para agregar productos usando el endpoint POST (basada en el patrón del componente principal)
-  const handleAddProducts = async (newProducts: ShippingItem[]) => {
-    try {
-      setAddingProducts(true);
+  // MODIFICADO: Nueva función para agregar productos con validación de duplicados
+// REEMPLAZA tu función handleAddProducts en ReleaseDetail con esta versión mejorada
+const handleAddProducts = async (newProducts: ShippingItem[]) => {
+  try {
+    setAddingProducts(true);
+    
+    console.log("🚀 Agregando productos al release:", newProducts);
+    
+    // VALIDACIÓN DE DUPLICADOS (mantener la validación existente)
+    const duplicateValidationErrors: string[] = [];
+    const existingItemNumbers = new Set(editingItems.map(item => item.customerItemNumber?.toLowerCase().trim()));
+    const existingClaveProductos = new Set(editingItems.map(item => item.claveProducto?.toLowerCase().trim()));
+    
+    newProducts.forEach(product => {
+      const itemNumber = product.customerItemNumber?.toLowerCase().trim();
+      const claveProducto = product.claveProducto?.toLowerCase().trim();
       
-      console.log("🚀 Agregando productos al release:", newProducts);
-      console.log("🚀 JSON que se enviará al endpoint /add-item:");
+      if (itemNumber && existingItemNumbers.has(itemNumber)) {
+        duplicateValidationErrors.push(`Item Number "${product.customerItemNumber}" ya existe en el release`);
+      }
       
-      let successCount = 0;
-      let failCount = 0;
-
-      // Procesar cada producto individualmente
-      for (const product of newProducts) {
-        try {
-          // Preparar payload siguiendo el mismo patrón que en el componente principal
-          const payload = {
-            company: product.company || "BioFlex",
-            shipDate: product.shipDate || new Date().toISOString(),
-            poNumber: product.poNumber || "",
-            sap: product.sap || "",
-            claveProducto: product.claveProducto || "",
-            customerItemNumber: product.customerItemNumber || "",
-            itemDescription: product.itemDescription || "",
-            quantityAlreadyShipped: product.quantityAlreadyShipped || "0",
-            pallets: product.pallets || 0,
-            casesPerPallet: product.casesPerPallet || 0,
-            unitsPerCase: product.unitsPerCase || 0,
-            grossWeight: product.grossWeight || 0,
-            netWeight: product.netWeight || 0,
-            itemType: product.itemType || "Finished Good",
-            salesCSRNames: product.salesCSRNames || "Equipo Ventas",
-            trazabilidades: product.trazabilidades || ""
-          };
-
-          // IMPRIMIR JSON EN CONSOLA PARA DEBUG (igual que en el componente principal)
-          console.log(`📦 Enviando POST para producto: ${product.itemDescription}`);
-          console.log(`🎯 URL: http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}/add-item`);
-          console.log("📋 Payload que se envía:");
-          console.log(JSON.stringify(payload, null, 2));
-
-          const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}/add-item`, {
-            method: 'POST',
-            headers: {
-              'accept': '*/*', // Cambiado para coincidir con el patrón
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-          });
-
-          console.log(`📡 Response status para ${product.itemDescription}:`, response.status);
-
-          if (!response.ok) {
-            const errorMsg = await response.text();
-            throw new Error(`Error al agregar producto: ${response.status}. ${errorMsg.substring(0, 200)}`);
-          }
-
-          // Intentar obtener la respuesta JSON
-          try {
-            const responseData = await response.json();
-            console.log(`✅ Respuesta del servidor para ${product.itemDescription}:`, responseData);
-          } catch {
-            console.log(`✅ Producto agregado exitosamente (sin respuesta JSON): ${product.itemDescription}`);
-          }
-
-          successCount++;
-
-          // Pequeña pausa entre requests para evitar saturar el servidor
-          await new Promise(resolve => setTimeout(resolve, 100));
-
-        } catch (error) {
-          console.error(`💥 Error al procesar ${product.itemDescription}:`, error);
-          failCount++;
-          
-          // Log del error específico
-          console.error("Error details:", {
-            producto: product.itemDescription,
-            error: error instanceof Error ? error.message : 'Error desconocido'
-          });
-        }
+      if (claveProducto && existingClaveProductos.has(claveProducto)) {
+        duplicateValidationErrors.push(`Clave de Producto "${product.claveProducto}" ya existe en el release`);
       }
-
-      // Actualizar la UI con los resultados (siguiendo el patrón del componente principal)
-      if (successCount > 0) {
-        // Refrescar los datos desde el servidor para obtener los IDs reales
-        await fetchReleaseDetail();
-        
-        toast({
-          title: "Productos Agregados Exitosamente",
-          description: `Se han agregado ${successCount} producto(s) al release${failCount > 0 ? `. ${failCount} fallaron.` : '.'}`,
-          variant: failCount > 0 ? "destructive" : "default",
-        });
-      } else {
-        toast({
-          title: "Error al Agregar Productos",
-          description: "No se pudo agregar ningún producto al release.",
-          variant: "destructive",
-        });
-      }
-
-      setShowProductSelection(false);
-
-    } catch (error) {
-      console.error("💥 Error general al agregar productos:", error);
+    });
+    
+    if (duplicateValidationErrors.length > 0) {
+      const errorMessage = `No se pueden agregar productos duplicados:\n\n${duplicateValidationErrors.join('\n')}\n\nPor favor, revisa los productos seleccionados y elimina los duplicados.`;
+      
+      alert(errorMessage);
+      
       toast({
-        title: "Error de Conexión",
-        description: error instanceof Error ? error.message : "Error desconocido al conectar con el servidor.",
+        title: "Productos Duplicados Detectados",
+        description: `${duplicateValidationErrors.length} producto(s) ya existen en el release.`,
         variant: "destructive",
       });
-    } finally {
-      setAddingProducts(false);
+      
+      setShowProductSelection(false);
+      return;
     }
-  };
+    
+    let successCount = 0;
+    let failCount = 0;
 
-  // Guardar cambios del release (usando el nuevo endpoint PUT por item)
-  const handleSaveReleaseChanges = async () => {
-    try {
-      setSavingRelease(true);
-      
-      // Identificar cambios comparando con items originales
-      const changedItems = editingItems.filter(currentItem => {
-        const originalItem = originalItems.find(orig => orig.id === currentItem.id);
-        return originalItem && JSON.stringify(currentItem) !== JSON.stringify(originalItem);
-      });
+    // Procesar cada producto con la lógica mejorada de page.tsx
+    for (const product of newProducts) {
+      try {
+        // APLICAR LA MISMA LÓGICA DE CONSOLIDACIÓN QUE EN PAGE.TSX
+        const company = "BioFlex";
+        const shipDate = new Date().toISOString();
+        const quantityAlreadyShipped = "0";
+        const itemType = "Finished Good";
+        const salesCSRNames = "Equipo Ventas";
+        const destino = "Local"; // Valor por defecto
+        const idReleaseCliente = ""; // Valor por defecto
+        
+        // Usar los datos del producto pero con valores más completos
+        const payload = {
+          company: company,
+          shipDate: shipDate,
+          poNumber: product.poNumber || "",
+          sap: product.sap || "", // IMPORTANTE: Asegurar que este campo venga del producto
+          claveProducto: product.claveProducto || "",
+          customerItemNumber: product.customerItemNumber || "",
+          itemDescription: product.itemDescription || "",
+          quantityAlreadyShipped: quantityAlreadyShipped,
+          pallets: product.pallets || 0,
+          casesPerPallet: product.casesPerPallet || 0,
+          unitsPerCase: product.unitsPerCase || 0, // IMPORTANTE: Asegurar que este campo venga del producto
+          grossWeight: product.grossWeight || 0,
+          netWeight: product.netWeight || 0,
+          itemType: itemType,
+          salesCSRNames: salesCSRNames,
+          trazabilidades: product.trazabilidades || "[]", // Mantener formato JSON
+          destino: destino,
+          idReleaseCliente: idReleaseCliente,
+          modifiedBy: "Sistema Web"
+        };
 
-      let successCount = 0;
+        // IMPRIMIR JSON EN CONSOLA PARA DEBUG (igual que en page.tsx)
+        console.log(`📦 Enviando POST para producto: ${product.itemDescription}`);
+        console.log(`🎯 URL: http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}/add-item`);
+        console.log("📋 Payload que se envía:");
+        console.log(JSON.stringify(payload, null, 2));
 
-      // Actualizar items modificados usando el endpoint PUT por item
-      for (const item of changedItems) {
-        try {
-          const payload = {
-            id: item.id,
-            company: item.company || "BioFlex",
-            tableName: item.tableName || "default_table",
-            shipDate: item.shipDate || new Date().toISOString(),
-            poNumber: item.poNumber || "",
-            sap: item.sap || "",
-            claveProducto: item.claveProducto || "",
-            customerItemNumber: item.customerItemNumber || "",
-            itemDescription: item.itemDescription || "",
-            quantityAlreadyShipped: item.quantityAlreadyShipped || "0",
-            pallets: item.pallets || 0,
-            casesPerPallet: item.casesPerPallet || 0,
-            unitsPerCase: item.unitsPerCase || 0,
-            grossWeight: item.grossWeight || 0,
-            netWeight: item.netWeight || 0,
-            itemType: item.itemType || "Finished Good",
-            salesCSRNames: item.salesCSRNames || "Equipo Ventas",
-            trazabilidades: item.trazabilidades || "",
-            destino: item.destino || "Local",
-            idReleaseCliente: item.idReleaseCliente || "",
-            modifiedBy: "Sistema Web"
-          };
+        const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}/add-item`, {
+          method: 'POST',
+          headers: {
+            'accept': '*/*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
 
-          const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/UpdateItem/${item.id}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: JSON.stringify(payload),
-          });
+        console.log(`📡 Response status para ${product.itemDescription}:`, response.status);
 
-          if (response.ok) {
-            successCount++;
-          } else {
-            console.error(`Error updating item ${item.id}:`, await response.text());
-          }
-        } catch (error) {
-          console.error(`Error updating item ${item.id}:`, error);
+        if (!response.ok) {
+          const errorMsg = await response.text();
+          throw new Error(`Error al agregar producto: ${response.status}. ${errorMsg.substring(0, 200)}`);
         }
-      }
 
-      // Actualizar estados
-      setOriginalItems([...editingItems]);
-      setHasUnsavedChanges(false);
-      setIsEditingRelease(false);
-      
-      // Refrescar datos
+        // Intentar obtener la respuesta JSON
+        try {
+          const responseData = await response.json();
+          console.log(`✅ Respuesta del servidor para ${product.itemDescription}:`, responseData);
+        } catch {
+          console.log(`✅ Producto agregado exitosamente (sin respuesta JSON): ${product.itemDescription}`);
+        }
+
+        successCount++;
+
+        // Pequeña pausa entre requests para evitar saturar el servidor
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+      } catch (error) {
+        console.error(`💥 Error al procesar ${product.itemDescription}:`, error);
+        failCount++;
+        
+        console.error("Error details:", {
+          producto: product.itemDescription,
+          error: error instanceof Error ? error.message : 'Error desconocido'
+        });
+      }
+    }
+
+    // Actualizar la UI con los resultados (igual que antes)
+    if (successCount > 0) {
       await fetchReleaseDetail();
       
       toast({
-        title: "Release actualizado",
-        description: `${successCount} cambios guardados exitosamente.`,
+        title: "Productos Agregados Exitosamente",
+        description: `Se han agregado ${successCount} producto(s) al release${failCount > 0 ? `. ${failCount} fallaron.` : '.'}`,
+        variant: failCount > 0 ? "destructive" : "default",
+      });
+      
+      console.log(`✅ Proceso completado: ${successCount} éxitos, ${failCount} fallos`);
+    } else {
+      toast({
+        title: "Error al Agregar Productos",
+        description: "No se pudo agregar ningún producto al release.",
+        variant: "destructive",
+      });
+    }
+
+    setShowProductSelection(false);
+
+  } catch (error) {
+    console.error("💥 Error general al agregar productos:", error);
+    toast({
+      title: "Error de Conexión",
+      description: error instanceof Error ? error.message : "Error desconocido al conectar con el servidor.",
+      variant: "destructive",
+    });
+  } finally {
+    setAddingProducts(false);
+  }
+};
+
+// Guardar cambios del release (usando el nuevo endpoint PUT por item)
+const handleSaveReleaseChanges = async () => {
+  try {
+    setSavingRelease(true);
+    
+    // Identificar cambios comparando con items originales
+    const changedItems = editingItems.filter(currentItem => {
+      const originalItem = originalItems.find(orig => orig.id === currentItem.id);
+      return originalItem && JSON.stringify(currentItem) !== JSON.stringify(originalItem);
+    });
+
+    let successCount = 0;
+
+    // Actualizar items modificados usando el endpoint PUT por item
+    for (const item of changedItems) {
+      try {
+        const payload = {
+          id: item.id,
+          company: item.company || "BioFlex",
+          tableName: item.tableName || "default_table",
+          shipDate: item.shipDate || new Date().toISOString(),
+          poNumber: item.poNumber || "",
+          sap: item.sap || "",
+          claveProducto: item.claveProducto || "",
+          customerItemNumber: item.customerItemNumber || "",
+          itemDescription: item.itemDescription || "",
+          quantityAlreadyShipped: item.quantityAlreadyShipped || "0",
+          pallets: item.pallets || 0,
+          casesPerPallet: item.casesPerPallet || 0,
+          unitsPerCase: item.unitsPerCase || 0,
+          grossWeight: item.grossWeight || 0,
+          netWeight: item.netWeight || 0,
+          itemType: item.itemType || "Finished Good",
+          salesCSRNames: item.salesCSRNames || "Equipo Ventas",
+          trazabilidades: item.trazabilidades || "",
+          destino: item.destino || "Local",
+          idReleaseCliente: item.idReleaseCliente || "",
+          modifiedBy: "Sistema Web"
+        };
+
+        const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/UpdateItem/${item.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          successCount++;
+        } else {
+          console.error(`Error updating item ${item.id}:`, await response.text());
+        }
+      } catch (error) {
+        console.error(`Error updating item ${item.id}:`, error);
+      }
+    }
+
+    // Actualizar estados
+    setOriginalItems([...editingItems]);
+    setHasUnsavedChanges(false);
+    setIsEditingRelease(false);
+    
+    // Refrescar datos
+    await fetchReleaseDetail();
+    
+    toast({
+      title: "Release actualizado",
+      description: `${successCount} cambios guardados exitosamente.`,
+      variant: "default",
+    });
+    
+  } catch (err) {
+    console.error("Error saving release changes:", err);
+    toast({
+      title: "Error al guardar release",
+      description: err instanceof Error ? err.message : "Error desconocido",
+      variant: "destructive",
+    });
+  } finally {
+    setSavingRelease(false);
+  }
+};
+  // La lógica de `handleSaveChanges` para cambios menores (edición de campos)
+  // REEMPLAZA tu función handleMarkAsCompleted con esta:
+  // Versión con debug para identificar el problema
+const handleMarkAsCompleted = async () => {
+  console.log("🚀 handleMarkAsCompleted iniciado");
+  
+  // 1. Validación de campos con reporte detallado
+  const requiredFields = [
+    { key: 'pallets', label: 'Pallets' },
+    { key: 'grossWeight', label: 'Peso Bruto' },
+    { key: 'netWeight', label: 'Peso Neto' },
+    { key: 'destino', label: 'Destino' },
+    { key: 'salesCSRNames', label: 'CSR Ventas' },
+    { key: 'modifiedBy', label: 'Modificado Por' }
+  ];
+  
+  const validationErrors: {
+    itemId: number;
+    itemDescription: string;
+    customerItemNumber: string;
+    missingFields: string[];
+  }[] = [];
+  
+  editingItems.forEach((item, index) => {
+    const missingFields: string[] = [];
+    
+    requiredFields.forEach(field => {
+      const value = item[field.key as keyof ShippingItem];
+      const isEmpty = value === null || value === undefined || String(value).trim() === '';
+      
+      if (isEmpty) {
+        missingFields.push(field.label);
+      }
+    });
+    
+    if (missingFields.length > 0) {
+      validationErrors.push({
+        itemId: item.id,
+        itemDescription: item.itemDescription || `Item ${index + 1}`,
+        customerItemNumber: item.customerItemNumber || 'N/A',
+        missingFields: missingFields
+      });
+    }
+  });
+
+  if (validationErrors.length > 0) {
+    console.log("❌ Validación falló. Errores encontrados:", validationErrors);
+    
+    // Crear mensaje detallado
+    let errorMessage = `Se encontraron ${validationErrors.length} item(s) con campos incompletos:\n\n`;
+    
+    validationErrors.forEach((error, index) => {
+      errorMessage += `${index + 1}. ${error.itemDescription} (ID: ${error.itemId})\n`;
+      errorMessage += `   Item Number: ${error.customerItemNumber}\n`;
+      errorMessage += `   Campos faltantes: ${error.missingFields.join(', ')}\n\n`;
+    });
+    
+    errorMessage += "Por favor, completa todos los campos requeridos antes de marcar como completado.";
+    
+    // Mostrar modal detallado
+    alert(errorMessage);
+    
+    // También mostrar toast para consistencia
+    toast({
+      title: "Campos Incompletos",
+      description: `${validationErrors.length} item(s) tienen campos requeridos vacíos. Revisa la lista detallada.`,
+      variant: "destructive",
+    });
+    
+    return; // Detener ejecución
+  }
+
+  console.log("✅ Validación exitosa, procediendo con confirmación...");
+
+  // 2. Confirmación del usuario
+  const confirmed = window.confirm(
+    "¿Estás seguro de que quieres marcar este release como 'Aprobado'?\n\nUna vez marcado como aprobado:\n• No podrás editar los items\n• No podrás agregar o eliminar productos\n• El release quedará bloqueado permanentemente"
+  );
+  
+  if (!confirmed) {
+    console.log("❌ Usuario canceló la confirmación");
+    return;
+  }
+
+  console.log("✅ Usuario confirmó, procediendo con API call...");
+  setSavingRelease(true);
+
+  try {
+    console.log("📡 Enviando request al servidor...");
+    
+    const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}/status`, {
+      method: 'PUT',
+      headers: {
+        'accept': '*/*',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ status: "Aprobado" })
+    });
+
+    console.log("📡 Response status:", response.status);
+
+    if (response.ok) {
+      console.log("✅ API call exitoso");
+      toast({
+        title: "¡Release Completado!",
+        description: "El estado se ha actualizado y el release ha sido bloqueado para edición.",
         variant: "default",
       });
       
-    } catch (err) {
-      console.error("Error saving release changes:", err);
-      toast({
-        title: "Error al guardar release",
-        description: err instanceof Error ? err.message : "Error desconocido",
-        variant: "destructive",
-      });
-    } finally {
-      setSavingRelease(false);
+      // Actualizar estado en la UI
+      setIsCompleted(true);
+      if (releaseData) {
+        setReleaseData({ ...releaseData, status: "Aprobado" });
+      }
+      console.log("✅ Estados actualizados en la UI");
+    } else {
+      const errorText = await response.text();
+      console.error("❌ API error:", errorText);
+      throw new Error(`Error ${response.status}: ${errorText || 'El servidor rechazó la solicitud.'}`);
     }
-  };
-
-  // La lógica de `handleSaveChanges` para cambios menores (edición de campos)
-  const handleSaveChanges = async () => {
-    try {
-      toast({
-        title: "Cambios guardados",
-        description: "Los cambios se han guardado exitosamente",
-        variant: "default",
-      });
-    } catch (err) {
-      toast({
-        title: "Error al guardar",
-        description: "No se pudieron guardar los cambios",
-        variant: "destructive",
-      });
-    }
-  };
-
+  } catch (err) {
+    console.error("💥 Error completo:", err);
+    toast({
+      title: "Error al completar",
+      description: err instanceof Error ? err.message : "No se pudo actualizar el estado.",
+      variant: "destructive",
+    });
+  } finally {
+    console.log("🏁 Finalizando, setSavingRelease(false)");
+    setSavingRelease(false);
+  }
+};
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-MX', {
       year: 'numeric',
@@ -535,32 +706,48 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
         
         {/* Botones condicionales según el modo */}
         <div className="flex items-center space-x-3">
-          {!isEditingRelease ? (
-            <>
-              {/* Modo normal */}
-              <button
-                onClick={() => setShowPreviewModal(true)}
-                className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
-              >
-                <Eye className="w-4 h-4" />
-                <span>Vista Previa</span>
-              </button>
-              
-              <button
-                onClick={handleStartEditingRelease}
-                className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 transition-colors"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span>Editar Release</span>
-              </button>
-              
-              <button
-                onClick={handleSaveChanges}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors"
-              >
-                Guardar Cambios
-              </button>
-            </>
+         {!isEditingRelease ? (
+  <>
+    {/* Botón Vista Previa (siempre visible) */}
+    <button
+      onClick={() => setShowPreviewModal(true)}
+      className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors"
+    >
+      <Eye className="w-4 h-4" />
+      <span>Vista Previa</span>
+    </button>
+    
+    {/* --- INICIO DE LA LÓGICA --- */}
+    {/* Estos dos botones solo aparecen si el release NO está completado */}
+    {!isCompleted && (
+      <>
+        <button
+          onClick={handleStartEditingRelease}
+          className="flex items-center space-x-2 bg-orange-600 text-white px-4 py-2 rounded-md hover:bg-orange-700 transition-colors"
+        >
+          <Edit3 className="w-4 h-4" />
+          <span>Editar Release</span>
+        </button>
+        
+        <button
+          onClick={handleMarkAsCompleted}
+          disabled={savingRelease} // Se deshabilita mientras guarda
+          className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {/* Muestra un ícono u otro dependiendo del estado de carga */}
+          {savingRelease ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <CheckCircle className="w-4 h-4" />
+          )}
+          <span>
+            {savingRelease ? "Completando..." : "MARCAR COMO COMPLETADO"}
+          </span>
+        </button>
+      </>
+    )}
+     {/* --- FIN DE LA LÓGICA --- */}
+  </>
           ) : (
             <>
               {/* Modo de edición del release */}
@@ -802,10 +989,12 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
             </table>
           ) : (
             // Vista normal con tabla completa editable
-            <EditableShippingTable
-              items={editingItems}
-              onUpdateItem={handleUpdateItemWithSave}
-            />
+           <EditableShippingTable
+  items={editingItems}
+  onUpdateItem={handleUpdateItemWithSave}
+  isReadOnly={isCompleted}
+  onItemDeleted={handleItemDeleted} // <-- Nueva prop
+/>
           )}
         </div>
       </div>
@@ -826,6 +1015,17 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
         currentItems={editingItems}
         isLoading={addingProducts}
       />
-    </div>
+      {updatingItemId && (
+        <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 transition-opacity duration-300">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-xl flex items-center space-x-4 animate-pulse">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <span className="text-lg font-medium text-slate-700 dark:text-slate-200">
+              Actualizando...
+            </span>
+          </div>
+        </div>
+      )}
+        </div>
+    
   );
 }

@@ -4,17 +4,19 @@ import { Tarima } from "@/types";
 import TarimasSearch from "./TarimasSearch";
 import SelectedTarimasPreview from "./SelectedTarimasPreview";
 import TarimasTable from "./TarimasTable";
+import { TarimasStats } from "@/types";
 
 interface TarimasTabProps {
   tarimas: Tarima[];
   selectedTarimas: Tarima[];
   onSelectTarima: (tarima: Tarima) => void;
   onClearSelection: () => void;
+  onClearProcessedTarimas: () => void; // NUEVA PROP
+  removeTarima: (tarima: Tarima) => void; // NUEVA PROP
   onProcessTarimas: () => void;
   loading: boolean;
-  getStats: () => any;
+  getStats: () => TarimasStats;
   getWeightInfo: () => any;
-  // NUEVAS PROPS para el filtro de estado
   showAllTarimas: boolean;
   onToggleShowAll: (checked: boolean) => void;
   totalTarimasCount: number;
@@ -26,6 +28,8 @@ export default function TarimasTab({
   selectedTarimas,
   onSelectTarima,
   onClearSelection,
+  onClearProcessedTarimas, // AGREGADA
+  removeTarima, // AGREGADA
   onProcessTarimas,
   loading,
   getStats,
@@ -42,7 +46,6 @@ export default function TarimasTab({
   // Aplicar filtro de búsqueda sobre las tarimas ya filtradas por estado
   const filteredTarimas = tarimas.filter((tarima) => {
     if (!searchTerm) return true;
-    
     const searchLower = searchTerm.toLowerCase();
     return (
       tarima.nombreProducto.toLowerCase().includes(searchLower) ||
@@ -54,6 +57,12 @@ export default function TarimasTab({
 
   const stats = getStats();
   const weightInfo = getWeightInfo();
+
+  // TRANSFORMAR stats para TarimasSearch (formato que espera)
+  const searchStats = {
+    pendientes: stats.tarimasPendientes,
+    asignadas: stats.tarimasAsignadas
+  };
 
   return (
     <div className="space-y-6">
@@ -72,15 +81,16 @@ export default function TarimasTab({
         onToggleShowAll={onToggleShowAll}
         totalTarimasCount={totalTarimasCount}
         filteredTarimasCount={filteredTarimasCount}
-        stats={stats}
+        stats={searchStats} // USAR EL FORMATO TRANSFORMADO
       />
 
-      {/* Vista previa de selección */}
+      {/* Vista previa de selección - CORREGIDA */}
       {selectedTarimas.length > 0 && showPreview && (
         <SelectedTarimasPreview
           selectedTarimas={selectedTarimas}
-          stats={stats}
-          onRemoveTarima={onSelectTarima}
+          stats={stats} // USAR EL STATS COMPLETO
+          onRemoveTarima={removeTarima} // CORREGIDO: usar removeTarima en lugar de onSelectTarima
+          onClearProcessedTarimas={onClearProcessedTarimas} // AGREGADA LA NUEVA PROP
           weightInfo={weightInfo}
         />
       )}

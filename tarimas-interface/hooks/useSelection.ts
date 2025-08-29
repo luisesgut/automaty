@@ -53,6 +53,31 @@ export const useSelection = () => {
         setSelectedTarimas([]);
     };
 
+    // NUEVA: Función para limpiar solo las tarimas procesadas (asignadas)
+    const clearProcessedTarimas = () => {
+        setSelectedTarimas(prev => {
+            const tarimasAManetener = prev.filter(tarima => !tarima.asignadoAentrega);
+            const tarimasEliminadas = prev.length - tarimasAManetener.length;
+            
+            if (tarimasEliminadas > 0) {
+                toast({
+                    title: "🧹 Selección Limpiada",
+                    description: `Se eliminaron ${tarimasEliminadas} tarima(s) procesada(s) de la selección.`,
+                    variant: "default",
+                });
+            }
+            
+            return tarimasAManetener;
+        });
+    };
+
+    // NUEVA: Función para remover una tarima específica
+    const removeTarima = (tarimaToRemove: Tarima) => {
+        setSelectedTarimas(prev => 
+            prev.filter(tarima => tarima.prodEtiquetaRFIDId !== tarimaToRemove.prodEtiquetaRFIDId)
+        );
+    };
+
     const updateSelectedTarimasStatus = (tarimasAProcesar: Tarima[]) => {
         setSelectedTarimas(prevSeleccionadas =>
             prevSeleccionadas.map(t =>
@@ -81,6 +106,10 @@ export const useSelection = () => {
                 ? `${totalCantidad.toLocaleString()} Millares`
                 : `${totalCantidad.toLocaleString()} ${unidadPredominante}`;
 
+        // NUEVO: Separar por estado para las estadísticas
+        const tarimasPendientes = selectedTarimas.filter(t => !t.asignadoAentrega);
+        const tarimasAsignadas = selectedTarimas.filter(t => t.asignadoAentrega);
+
         return {
             totalCajas,
             totalPesoBruto,
@@ -88,6 +117,12 @@ export const useSelection = () => {
             totalCantidad,
             unidadPredominante,
             cantidadFormateada,
+            // NUEVOS: Estadísticas por estado
+            totalTarimas: selectedTarimas.length,
+            productosUnicos: new Set(selectedTarimas.map(t => `${t.po}-${t.itemNumber}`)).size,
+            totalUnidades: selectedTarimas.reduce((sum, t) => sum + (t.totalUnits || 0), 0),
+            tarimasPendientes: tarimasPendientes.length,
+            tarimasAsignadas: tarimasAsignadas.length,
         };
     };
 
@@ -114,6 +149,8 @@ export const useSelection = () => {
         selectedTarimas,
         handleSelectTarima,
         clearSelection,
+        clearProcessedTarimas,    // NUEVA FUNCIÓN
+        removeTarima,             // NUEVA FUNCIÓN
         updateSelectedTarimasStatus,
         getStats,
         getWeightInfo,
