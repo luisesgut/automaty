@@ -5,7 +5,7 @@ import { ShippingItem } from "@/types/release";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Trash2, AlertCircle, Edit3, Eye, Check, X, Package, Truck, MapPin, Plus, User } from "lucide-react";
+import { Trash2, AlertCircle, Edit3, Eye, Check, X, Package, Truck, MapPin, Plus, User, Save } from "lucide-react";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { toast } from "@/components/ui/use-toast";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 const destinoOptions = ["Yuma CA", "Salinas CA", "Bakersfield CA", "Coachella"];
 const itemTypeOptions = ["Bag No Wicket/Zipper", "Bag Wicket", "Bag Zipper", "Film"];
 const modifiedByOptions = ["Moises Jimenez", "Rebeca Franco", "Otro"];
+
 
 // --- INTERFACES NECESARIAS ---
 interface StockItem {
@@ -37,6 +38,9 @@ interface TrazabilidadDetail {
   pesoNeto: number;
   cajas: number;
   cantidad: number;
+  nombreProducto: string;
+  claveProducto: string;
+  itemNumber: string;
 }
 
 // --- MODAL PARA VER DETALLES DE TRAZABILIDADES (CON INFORMACIÓN COMPLETA) ---
@@ -124,6 +128,8 @@ const TraceabilityDetailsModal = ({
     });
     return Array.from(lotesMap.values());
   }, [lotes]);
+
+  
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -285,13 +291,16 @@ const TraceabilityModal = ({
       lotesActuales.forEach(loteNum => {
         const stockInfo = allStock.find(s => s.lote === loteNum);
         if (stockInfo) {
-          detailsMap.set(loteNum, {
-            lote: loteNum,
-            pesoBruto: stockInfo.pesoBruto,
-            pesoNeto: stockInfo.pesoNeto,
-            cajas: stockInfo.cajas,
-            cantidad: stockInfo.cantidad,
-          });
+         detailsMap.set(loteNum, {
+  lote: loteNum,
+  pesoBruto: stockInfo.pesoBruto,
+  pesoNeto: stockInfo.pesoNeto,
+  cajas: stockInfo.cajas,
+  cantidad: stockInfo.cantidad,
+  nombreProducto: stockInfo.nombreProducto,
+  claveProducto: stockInfo.claveProducto,
+  itemNumber: stockInfo.itemNumber,
+});
         }
       });
       setLoteDetails(detailsMap);
@@ -448,6 +457,8 @@ const TraceabilityModal = ({
     }
   };
 
+
+  
   const handleAddLote = async (loteToAdd: StockItem) => {
     try {
       console.log("🔍 Estructura completa del lote a agregar:", loteToAdd);
@@ -483,6 +494,9 @@ const TraceabilityModal = ({
         pesoNeto: loteToAdd.pesoNeto,
         cajas: loteToAdd.cajas,
         cantidad: loteToAdd.cantidad,
+        nombreProducto: "",
+        claveProducto: "",
+        itemNumber: ""
       });
       
       recalculateAndUpdate(updatedLotes, updatedDetails);
@@ -517,29 +531,104 @@ const TraceabilityModal = ({
           <div className="grid grid-cols-2 gap-6 flex-1 overflow-hidden">
             <div className="flex flex-col overflow-hidden border rounded-lg">
               <h3 className="p-3 font-semibold border-b bg-slate-50 dark:bg-slate-700">Actuales en el Release ({currentLotes.length})</h3>
-              <div className="overflow-y-auto p-3 space-y-2">
-                {currentLotes.length > 0 ? currentLotes.map(lote => (
-                  <div key={lote} className="flex items-center justify-between p-2 border rounded-md">
-                    <span className="font-mono text-sm">{lote}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveLote(lote)}>
-                      <Trash2 className="w-4 h-4 text-red-500"/>
-                    </Button>
-                  </div>
-                )) : <p className="text-sm text-slate-500 text-center mt-4">No hay trazabilidades asignadas.</p>}
-              </div>
+              <div className="overflow-y-auto p-3 space-y-3">
+  {currentLotes.length > 0 ? currentLotes.map(lote => {
+    const loteDetail = loteDetails.get(lote);
+    return (
+      <div key={lote} className="bg-gradient-to-r from-slate-50 to-white dark:from-slate-700 dark:to-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+        <div className="flex justify-between items-center mb-2">
+          <span className="font-bold text-slate-800 dark:text-slate-100 text-base">
+            Lote: {lote}
+          </span>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleRemoveLote(lote)}>
+            <Trash2 className="w-4 h-4 text-red-500"/>
+          </Button>
+        </div>
+        
+       {loteDetail && (
+  <>
+    {/* Información del producto */}
+    <div className="mb-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border-l-4 border-blue-400">
+      <div className="text-xs font-medium text-slate-600 dark:text-slate-400">Producto:</div>
+      <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">{loteDetail.nombreProducto}</div>
+      <div className="text-xs text-slate-500 dark:text-slate-400">
+        {loteDetail.claveProducto} | {loteDetail.itemNumber}
+      </div>
+    </div>
+    
+    {/* Datos numéricos */}
+    <div className="grid grid-cols-2 gap-2 text-sm">
+      <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-green-400">
+        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Cantidad:</span>
+        <span className="text-slate-800 dark:text-slate-200">{loteDetail.cantidad?.toLocaleString()}</span>
+      </div>
+      <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-orange-400">
+        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Peso Bruto:</span>
+        <span className="text-slate-800 dark:text-slate-200">{loteDetail.pesoBruto}</span>
+      </div>
+      <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-orange-400">
+        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Peso Neto:</span>
+        <span className="text-slate-800 dark:text-slate-200">{loteDetail.pesoNeto}</span>
+      </div>
+      <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-purple-400">
+        <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Cajas:</span>
+        <span className="text-slate-800 dark:text-slate-200">{loteDetail.cajas}</span>
+      </div>
+    </div>
+  </>
+)}
+      </div>
+    );
+  }) : <p className="text-sm text-slate-500 text-center mt-4">No hay trazabilidades asignadas.</p>}
+</div>
             </div>
             <div className="flex flex-col overflow-hidden border rounded-lg">
               <h3 className="p-3 font-semibold border-b bg-slate-50 dark:bg-slate-700">Disponibles en Stock ({availableStock.length})</h3>
-              <div className="overflow-y-auto p-3 space-y-2">
-                {availableStock.length > 0 ? availableStock.map(stock => (
-                  <div key={stock.lote} className="flex items-center justify-between p-2 border rounded-md">
-                    <span className="font-mono text-sm">{stock.lote}</span>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleAddLote(stock)}>
-                      <Plus className="w-4 h-4 text-green-500"/>
-                    </Button>
-                  </div>
-                )) : <p className="text-sm text-slate-500 text-center mt-4">No hay stock disponible para este producto.</p>}
-              </div>
+             <div className="overflow-y-auto p-3 space-y-3">
+  {availableStock.length > 0 ? availableStock.map(stock => (
+    <div key={stock.lote} className="bg-gradient-to-r from-green-50 to-white dark:from-green-900/20 dark:to-slate-800 p-3 rounded-lg border border-green-200 dark:border-green-600 shadow-sm">
+      <div className="flex justify-between items-center mb-2">
+        <span className="font-bold text-slate-800 dark:text-slate-100 text-base">
+          Lote: {stock.lote}
+        </span>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleAddLote(stock)}>
+          <Plus className="w-4 h-4 text-green-500"/>
+        </Button>
+      </div>
+      
+      <>
+  {/* Información del producto */}
+  <div className="mb-2 p-2 bg-green-50 dark:bg-green-900/20 rounded border-l-4 border-green-400">
+    <div className="text-xs font-medium text-slate-600 dark:text-slate-400">Producto:</div>
+    <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">{stock.nombreProducto}</div>
+    <div className="text-xs text-slate-500 dark:text-slate-400">
+      {stock.claveProducto} | {stock.itemNumber}
+    </div>
+  </div>
+  
+  {/* Datos numéricos */}
+  <div className="grid grid-cols-2 gap-2 text-sm">
+    <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-green-400">
+      <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Cantidad:</span> 
+      <span className="text-slate-800 dark:text-slate-200">{stock.cantidad?.toLocaleString()}</span>
+    </div>
+    <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-orange-400">
+      <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Peso Bruto:</span> 
+      <span className="text-slate-800 dark:text-slate-200">{stock.pesoBruto}</span>
+    </div>
+    <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-orange-400">
+      <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Peso Neto:</span> 
+      <span className="text-slate-800 dark:text-slate-200">{stock.pesoNeto}</span>
+    </div>
+    <div className="bg-white dark:bg-slate-700 p-2 rounded border-l-4 border-purple-400">
+      <span className="font-medium text-slate-600 dark:text-slate-400 block text-xs">Cajas:</span> 
+      <span className="text-slate-800 dark:text-slate-200">{stock.cajas}</span>
+    </div>
+  </div>
+</>
+    </div>
+  )) : <p className="text-sm text-slate-500 text-center mt-4">No hay stock disponible para este producto.</p>}
+</div>
             </div>
           </div>
         )}
@@ -559,10 +648,10 @@ interface EditableShippingTableProps {
   onItemDeleted?: (itemId: number) => void; // Nueva prop para manejar eliminación
 }
 
-interface EditingCell {
-  itemId: number;
-  field: keyof ShippingItem;
-}
+// interface EditingCell {
+//   itemId: number;
+//   field: keyof ShippingItem;
+// }
 
 export default function EditableShippingTable({ 
   items, 
@@ -573,8 +662,12 @@ export default function EditableShippingTable({
   onItemsAdded,
   onItemDeleted
 }: EditableShippingTableProps) {
-  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
-  const [editValue, setEditValue] = useState<string>("");
+  //nuevo metodo de guardar
+  const [editingRowId, setEditingRowId] = useState<number | null>(null);
+  const [editingRowData, setEditingRowData] = useState<ShippingItem | null>(null);
+  const [hasChanges, setHasChanges] = useState(false);
+  // const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  // const [editValue, setEditValue] = useState<string>("");
   const [isTraceabilityModalOpen, setIsTraceabilityModalOpen] = useState(false);
   const [currentItemForTraceability, setCurrentItemForTraceability] = useState<ShippingItem | null>(null);
   
@@ -641,6 +734,245 @@ export default function EditableShippingTable({
     setIsTraceabilityModalOpen(true);
   };
 
+  // Función para entrar en modo edición de fila
+const handleEditRow = (item: ShippingItem) => {
+  if (isReadOnly) {
+    toast({ title: "Release Completado", description: "No se puede editar un release completado." });
+    return;
+  }
+  
+  // Si ya hay otra fila siendo editada, preguntar si guardar
+  if (editingRowId && editingRowId !== item.id && hasChanges) {
+    if (window.confirm("Hay cambios sin guardar en otra fila. ¿Guardar antes de continuar?")) {
+      handleSaveRow();
+    }
+  }
+  
+  setEditingRowId(item.id);
+  setEditingRowData({ ...item });
+  setHasChanges(false);
+};
+// Guardar cambios de la fila
+const handleSaveRow = async () => {
+  if (!editingRowData || !hasChanges) {
+    handleCancelRowEdit();
+    return;
+  }
+
+  try {
+    await onUpdateItem(editingRowData);
+    toast({ 
+      title: "Cambios guardados", 
+      description: "La fila se actualizó correctamente.",
+      variant: "default"
+    });
+    setEditingRowId(null);
+    setEditingRowData(null);
+    setHasChanges(false);
+  } catch (error) {
+    toast({ 
+      title: "Error al guardar", 
+      description: "No se pudieron guardar los cambios.",
+      variant: "destructive"
+    });
+  }
+};
+
+// Cancelar edición
+const handleCancelRowEdit = () => {
+  if (hasChanges) {
+    if (!window.confirm("Hay cambios sin guardar. ¿Descartar cambios?")) {
+      return;
+    }
+  }
+  setEditingRowId(null);
+  setEditingRowData(null);
+  setHasChanges(false);
+};
+
+// Manejo de teclas para toda la fila
+const handleRowKeyDown = (e: React.KeyboardEvent) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    handleSaveRow();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    handleCancelRowEdit();
+  }
+};
+// Función para actualizar un campo en la fila siendo editada
+const handleFieldChange = (field: keyof ShippingItem, value: any) => {
+  if (!editingRowData) return;
+  
+  const fieldConfig = editableFields.find(f => f.key === field);
+  if (!fieldConfig) return;
+
+  // Convertir el valor según el tipo
+  let processedValue = value;
+  if (fieldConfig.type === 'number') {
+    processedValue = parseFloat(value) || 0;
+  }
+  
+  const updatedData = { ...editingRowData, [field]: processedValue };
+  setEditingRowData(updatedData);
+  
+  // Detectar cambios comparando con el item original
+  const originalItem = items.find(i => i.id === editingRowId);
+  if (originalItem) {
+    // Comparar solo los campos editables (excluyendo modales)
+    const editableFieldsOnly = editableFields.filter(f => f.editable && f.type !== 'modal');
+    const hasChanges = editableFieldsOnly.some(f => 
+      String(updatedData[f.key] || '') !== String(originalItem[f.key] || '')
+    );
+    setHasChanges(hasChanges);
+  }
+};
+
+// Renderizar celda editable
+const renderEditableCell = (item: ShippingItem, field: any) => {
+  const isRowBeingEdited = editingRowId === item.id;
+const currentValue = isRowBeingEdited ? editingRowData?.[field.key as keyof ShippingItem] : item[field.key as keyof ShippingItem];  
+  if (field.type === 'modal' && field.key === 'trazabilidades') {
+    // Mantener el comportamiento actual para trazabilidades
+    let count = 0;
+    try { count = JSON.parse(item.trazabilidades || "[]").length; } catch {}
+    return (
+      <div className="flex items-center justify-center space-x-2">
+        <Button 
+          onClick={() => handleOpenTraceabilityModal(item)} 
+          variant="outline" 
+          size="sm" 
+          disabled={isReadOnly}
+          className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 hover:from-blue-600 hover:to-purple-700 shadow-sm"
+        >
+          <Edit3 className="w-4 h-4 mr-2" />
+          Gestionar ({count})
+        </Button>
+       
+
+      </div>
+    );
+  }
+  
+  if (!field.editable) {
+    // Campo de solo lectura
+    const hasValue = currentValue !== null && currentValue !== undefined && currentValue !== '';
+    return (
+      <div className="px-3 py-2 rounded-lg min-h-[36px] flex items-center">
+        <span className={`truncate ${!hasValue ? 'text-slate-400 italic' : 'text-slate-700 dark:text-slate-300'}`}>
+          {hasValue ? formatValue(currentValue, field.type) : 'Sin valor'}
+        </span>
+      </div>
+    );
+  }
+  
+  // Campo editable
+  if (isRowBeingEdited) {
+    // Mostrar input para edición
+    if (field.type === 'select') {
+      const options = field.key === 'destino' ? destinoOptions : 
+                     field.key === 'itemType' ? itemTypeOptions :
+                     field.key === 'modifiedBy' ? modifiedByOptions : [];
+      return (
+        <select
+          value={String(currentValue || '')}
+          onChange={(e) => handleFieldChange(field.key, e.target.value)}
+          onKeyDown={handleRowKeyDown}
+          className="w-full px-3 py-2 text-sm border border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 dark:border-blue-500"
+        >
+          <option value="">-- Selecciona --</option> 
+          {options.map(option => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      );
+    } else {
+      return (
+        <input
+          type={field.type === 'number' ? 'number' : 'text'}
+          value={String(currentValue || '')}
+          onChange={(e) => handleFieldChange(field.key, e.target.value)}
+          onKeyDown={handleRowKeyDown}
+          className="w-full px-3 py-2 text-sm border border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 dark:border-blue-500"
+          step={field.type === 'number' ? '0.01' : undefined}
+          placeholder="Ingrese valor..."
+        />
+      );
+    }
+  } else {
+    // Mostrar valor normal con opción de hacer clic para editar
+    const hasValue = currentValue !== null && currentValue !== undefined && currentValue !== '';
+    return (
+      <div
+        onClick={() => handleEditRow(item)}
+        className="px-3 py-2 rounded-lg transition-all duration-200 min-h-[36px] flex items-center group cursor-pointer border-2 border-transparent hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:shadow-sm"
+        title="Click para editar fila"
+      >
+        <div className="flex items-center space-x-2 w-full">
+          <Edit3 className="h-4 w-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <span className={`flex-1 truncate ${
+            !hasValue 
+              ? 'text-slate-400 italic' 
+              : 'text-slate-900 dark:text-slate-100 font-medium'
+          }`}>
+            {hasValue ? formatValue(currentValue, field.type) : 'Sin valor'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+};
+
+// Agregar botones de acción para filas en edición
+const renderRowActions = (item: ShippingItem) => {
+  if (editingRowId !== item.id) {
+    return (
+      <div className="flex items-center justify-center">
+        <Button
+          onClick={() => handleEditRow(item)}
+          variant="outline"
+          size="sm"
+          disabled={isReadOnly}
+          className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white border-0 hover:from-blue-600 hover:to-indigo-700"
+        >
+          <Edit3 className="w-4 h-4 mr-2" />
+          Editar
+        </Button>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="flex items-center justify-center space-x-2">
+      <Button
+        onClick={handleSaveRow}
+        variant="outline"
+        size="sm"
+        disabled={!hasChanges}
+        className={`${hasChanges 
+          ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0 hover:from-green-600 hover:to-emerald-700' 
+          : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+        }`}
+        title="Ctrl+Enter para guardar"
+      >
+        <Check className="w-4 h-4 mr-1" />
+        Guardar
+      </Button>
+      <Button
+        onClick={handleCancelRowEdit}
+        variant="outline"
+        size="sm"
+        className="bg-gradient-to-r from-red-500 to-rose-600 text-white border-0 hover:from-red-600 hover:to-rose-700"
+        title="Esc para cancelar"
+      >
+        <X className="w-4 h-4 mr-1" />
+        Cancelar
+      </Button>
+    </div>
+  );
+};
+
+
   // Función para obtener color de categoría (del segundo componente)
   const getCategoryColor = (category: string) => {
     const colors = {
@@ -653,70 +985,6 @@ export default function EditableShippingTable({
     return colors[category as keyof typeof colors] || 'bg-gray-50';
   };
 
-  const handleCellClick = (itemId: number, field: keyof ShippingItem) => {
-    if (isReadOnly) {
-      toast({
-        title: "Release Completado",
-        description: "No se puede editar un release que ya ha sido completado.",
-      });
-      return;
-    }
-
-    const item = items.find(i => i.id === itemId);
-    const fieldConfig = editableFields.find(f => f.key === field);
-    
-    if (item && fieldConfig?.editable) {
-      if (fieldConfig.type === 'modal' && field === 'trazabilidades') {
-        // Usar el modal inteligente para trazabilidades
-        handleOpenTraceabilityModal(item);
-      } else {
-        // Edición normal para otros campos
-        setEditingCell({ itemId, field });
-        setEditValue(String(item[field] || ''));
-      }
-    }
-  };
-
-  const handleSaveEdit = () => {
-    if (!editingCell) return;
-
-    const item = items.find(i => i.id === editingCell.itemId);
-    if (!item) {
-      setEditingCell(null);
-      return;
-    }
-
-    const originalValue = String(item[editingCell.field] || '');
-
-    if (editValue !== originalValue) {
-      const field = editableFields.find(f => f.key === editingCell.field);
-      if (!field) return;
-
-      let newValue: any = editValue;
-      if (field.type === 'number') {
-        newValue = parseFloat(editValue) || 0;
-      }
-
-      const updatedItem = { ...item, [editingCell.field]: newValue };
-      onUpdateItem(updatedItem);
-    }
-
-    setEditingCell(null);
-    setEditValue("");
-  };
-
-  const handleCancelEdit = () => {
-    setEditingCell(null);
-    setEditValue("");
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSaveEdit();
-    } else if (e.key === 'Escape') {
-      handleCancelEdit();
-    }
-  };
 
   const formatValue = (value: any, type: string) => {
     if (value === null || value === undefined) return '';
@@ -758,8 +1026,8 @@ export default function EditableShippingTable({
           <div>
             <h3 className="text-lg font-semibold text-slate-800 dark:text-slate-200">Items de Envío</h3>
             <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-              {items.length} items • Click en los campos resaltados para editar
-            </p>
+            {items.length} items • Click en "Editar" para modificar una fila completa
+          </p>
           </div>
           <div className="flex items-center space-x-4">
             {releaseId && onItemsAdded && (
@@ -782,6 +1050,34 @@ export default function EditableShippingTable({
                 <span className="text-slate-600 dark:text-slate-400">Solo lectura</span>
               </div>
             </div>
+            {/* Indicador de edición activa */}
+{editingRowId && (
+  <div className="mt-4 p-3 bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-600 rounded-lg">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center space-x-3">
+        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+        <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+          Editando fila #{editingRowId}
+        </span>
+        {hasChanges && (
+          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+            Cambios pendientes
+          </Badge>
+        )}
+      </div>
+      <div className="flex items-center space-x-2 text-xs text-blue-700 dark:text-blue-300">
+        <kbd className="px-2 py-1 bg-white dark:bg-slate-600 border border-blue-300 dark:border-blue-500 rounded text-xs font-mono">
+          Ctrl+Enter
+        </kbd>
+        <span>Guardar</span>
+        <kbd className="px-2 py-1 bg-white dark:bg-slate-600 border border-blue-300 dark:border-blue-500 rounded text-xs font-mono">
+          Esc
+        </kbd>
+        <span>Cancelar</span>
+      </div>
+    </div>
+  </div>
+)}
           </div>
         </div>
       </div>
@@ -789,197 +1085,70 @@ export default function EditableShippingTable({
       {/* Tabla scrollable */}
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead>
-            <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-              <th className="sticky left-0 z-10 bg-slate-50 dark:bg-slate-800 px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-16 border-r border-slate-200 dark:border-slate-700">
-                <div className="flex items-center space-x-1">
-                  <Package className="h-3 w-3" />
-                  <span>ID</span>
-                </div>
-              </th>
-              {editableFields.map((field) => (
-                <th 
-                  key={field.key}
-                  className={`px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider ${field.width} border-r border-slate-200 dark:border-slate-700 last:border-r-0 ${getCategoryColor(field.category)}`}
-                >
-                  <div className="flex items-center space-x-2">
-                    {field.editable && (
-                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Campo editable"></div>
-                    )}
-                    {!field.editable && (
-                      <div className="w-2 h-2 bg-slate-300 rounded-full" title="Solo lectura"></div>
-                    )}
-                    {field.icon && <field.icon className="h-3 w-3" />}
-                    <span className="truncate">{field.label}</span>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
+        <thead>
+  <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+    <th className="sticky left-0 z-10 bg-slate-50 dark:bg-slate-800 px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-16 border-r border-slate-200 dark:border-slate-700">
+      <div className="flex items-center space-x-1">
+        <Package className="h-3 w-3" />
+        <span>ID</span>
+      </div>
+    </th>
+    {editableFields.map((field) => (
+      <th
+        key={field.key}
+        className={`px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider ${field.width} border-r border-slate-200 dark:border-slate-700 last:border-r-0 ${getCategoryColor(field.category)}`}
+      >
+        <div className="flex items-center space-x-2">
+          {field.editable && (
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" title="Campo editable"></div>
+          )}
+          {!field.editable && (
+            <div className="w-2 h-2 bg-slate-300 rounded-full" title="Solo lectura"></div>
+          )}
+          {field.icon && <field.icon className="h-3 w-3" />}
+          <span className="truncate">{field.label}</span>
+        </div>
+      </th>
+    ))}
+    {/* MOVER AQUÍ EL TH DE ACCIONES */}
+    <th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-32 border-r border-slate-200 dark:border-slate-700">
+      <div className="flex items-center justify-center space-x-1">
+        <Edit3 className="h-3 w-3" />
+        <span>Acciones</span>
+      </div>
+    </th>
+  </tr>
+</thead>
           <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
             {items.map((item, index) => (
               <tr 
-                key={item.id} 
-                className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${
-                  index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/30 dark:bg-slate-800/30'
-                }`}
-              >
+              key={item.id} 
+              className={`hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${
+              index % 2 === 0 ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/30 dark:bg-slate-800/30'
+              } ${editingRowId === item.id ? 'ring-2 ring-blue-400 dark:ring-blue-500 ring-opacity-50' : ''}`}
+                >
                 <td className="sticky left-0 z-10 bg-inherit px-4 py-4 text-sm font-medium text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-slate-700">
                   <div className="flex items-center space-x-2">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">
-                      {item.id}
-                    </div>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold ${
+                  editingRowId === item.id 
+                  ? 'bg-gradient-to-br from-blue-500 to-purple-600 animate-pulse' 
+                  : 'bg-gradient-to-br from-blue-500 to-purple-600'
+              }`}>
+          {item.id}
+          </div>
                   </div>
                 </td>
-                {editableFields.map((field) => {
-                  const isEditing = editingCell?.itemId === item.id && editingCell?.field === field.key;
-                  
-                  let content;
-                  if (isEditing) {
-                    if (field.type === 'select') {
-                      const options = field.key === 'destino' ? destinoOptions : 
-                                     field.key === 'itemType' ? itemTypeOptions :
-                                     field.key === 'modifiedBy' ? modifiedByOptions : [];
-                      content = (
-                        <div className="flex items-center space-x-2">
-                          <select
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={handleSaveEdit}
-                            autoFocus
-                            className="w-full px-3 py-2 text-sm border-2 border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 dark:border-blue-500 shadow-sm"
-                          >
-                            <option value="">-- Selecciona --</option> 
-                            {options.map(option => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </select>
-                          <div className="flex space-x-1">
-                            <button
-                              onClick={handleSaveEdit}
-                              className="p-1 text-green-600 hover:bg-green-100 rounded"
-                              title="Guardar"
-                            >
-                              <Check className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={handleCancelEdit}
-                              className="p-1 text-red-600 hover:bg-red-100 rounded"
-                              title="Cancelar"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    } else {
-                      content = (
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type={field.type === 'number' ? 'number' : 'text'}
-                            value={editValue}
-                            onChange={(e) => setEditValue(e.target.value)}
-                            onKeyDown={handleKeyPress}
-                            onBlur={handleSaveEdit}
-                            autoFocus
-                            className="w-full px-3 py-2 text-sm border-2 border-blue-400 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-slate-700 dark:border-blue-500 shadow-sm"
-                            step={field.type === 'number' ? '0.01' : undefined}
-                            placeholder="Ingrese valor..."
-                          />
-                          <div className="flex space-x-1">
-                            <button
-                              onClick={handleSaveEdit}
-                              className="p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30 rounded transition-colors"
-                              title="Guardar (Enter)"
-                            >
-                              <Check className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={handleCancelEdit}
-                              className="p-1 text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
-                              title="Cancelar (Esc)"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    }
-                  } else if (field.key === 'trazabilidades' && field.type === 'modal') {
-                    // Celda especial para trazabilidades que abre el modal inteligente
-                    let count = 0;
-                    try { count = JSON.parse(item.trazabilidades || "[]").length; } catch {}
-                    content = (
-                      <div className="flex items-center justify-center space-x-2">
-                        <Button 
-                          onClick={() => handleOpenTraceabilityModal(item)} 
-                          variant="outline" 
-                          size="sm" 
-                          disabled={isReadOnly}
-                          className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 hover:from-blue-600 hover:to-purple-700 shadow-sm"
-                        >
-                          <Edit3 className="w-4 h-4 mr-2" />
-                          Gestionar ({count})
-                        </Button>
-                        {/* Botón para ver detalles sin editar */}
-                        {item.trazabilidades && (
-                          <Button
-                            onClick={() => {
-                              setSelectedTrazabilidadesForDetails(item.trazabilidades);
-                              setSelectedItemDescriptionForDetails(item.itemDescription);
-                              setShowTraceabilityDetailsModal(true);
-                            }}
-                            variant="outline"
-                            size="sm"
-                            className="h-9 px-3 bg-gradient-to-r from-green-500 to-teal-600 text-white border-0 hover:from-green-600 hover:to-teal-700 shadow-sm"
-                            title="Ver detalles de trazabilidades"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            Ver
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  } else {
-                    // Celda normal editable o de solo lectura
-                    const hasValue = item[field.key] !== null && item[field.key] !== undefined && item[field.key] !== '';
-                    content = (
-                      <div
-                        onClick={() => handleCellClick(item.id, field.key)}
-                        className={`px-3 py-2 rounded-lg transition-all duration-200 min-h-[36px] flex items-center group ${
-                          field.editable 
-                            ? 'cursor-pointer border-2 border-transparent hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:shadow-sm' 
-                            : 'cursor-default'
-                        }`}
-                        title={field.editable ? 'Click para editar' : 'Campo de solo lectura'}
-                      >
-                        <div className="flex items-center space-x-2 w-full">
-                          {field.editable && (
-                            <Edit3 className="h-4 w-4 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          )}
-                          <span className={`flex-1 truncate ${
-                            !hasValue 
-                              ? 'text-slate-400 italic' 
-                              : field.editable 
-                                ? 'text-slate-900 dark:text-slate-100 font-medium' 
-                                : 'text-slate-700 dark:text-slate-300'
-                          }`}>
-                            {hasValue ? formatValue(item[field.key], field.type) : 'Sin valor'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <td 
-                      key={field.key} 
-                      className={`px-4 py-4 text-sm ${field.width} border-r border-slate-200 dark:border-slate-700 last:border-r-0 ${getCategoryColor(field.category)}`}
+                {editableFields.map((field) => (
+                <td 
+                  key={field.key} 
+                  className={`px-4 py-4 text-sm ${field.width} border-r border-slate-200 dark:border-slate-700 last:border-r-0 ${getCategoryColor(field.category)}`}
                     >
-                      {content}
+                {renderEditableCell(item, field)}
                     </td>
-                  );
-                })}
+                    ))}
+                <td className="px-4 py-4 text-sm w-32 border-r border-slate-200 dark:border-slate-700">
+                {renderRowActions(item)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -988,41 +1157,40 @@ export default function EditableShippingTable({
       
       {/* Footer */}
       <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 px-6 py-4 border-t border-slate-200 dark:border-slate-600">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Editables</span>
-            </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Click para modificar</span>
-          </div>
-          
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <Edit3 className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Edición</span>
-            </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Hover para preview</span>
-          </div>
-          
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <div className="flex space-x-1">
-                <kbd className="px-2 py-1 bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 rounded text-xs font-mono">Enter</kbd>
-                <kbd className="px-2 py-1 bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 rounded text-xs font-mono">Esc</kbd>
-              </div>
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Controles</span>
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-2">
-              <Package className="h-4 w-4 text-purple-500" />
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Gestión Auto</span>
-            </div>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Trazabilidades inteligentes</span>
-          </div>
-        </div>
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div className="flex items-center space-x-3">
+    <div className="flex items-center space-x-2">
+      <Edit3 className="h-4 w-4 text-blue-500" />
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Edición por Fila</span>
+    </div>
+    <span className="text-xs text-slate-500 dark:text-slate-400">Un PUT por fila</span>
+  </div>
+  
+  <div className="flex items-center space-x-3">
+    <div className="flex items-center space-x-2">
+      <Save className="h-4 w-4 text-green-500" />
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Auto-detección</span>
+    </div>
+    <span className="text-xs text-slate-500 dark:text-slate-400">Solo si hay cambios</span>
+  </div>
+  
+  <div className="flex items-center space-x-3">
+    <div className="flex items-center space-x-2">
+      <div className="flex space-x-1">
+        <kbd className="px-2 py-1 bg-white dark:bg-slate-600 border border-slate-300 dark:border-slate-500 rounded text-xs font-mono">Ctrl+Enter</kbd>
+      </div>
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Guardar</span>
+    </div>
+  </div>
+  
+  <div className="flex items-center space-x-3">
+    <div className="flex items-center space-x-2">
+      <Package className="h-4 w-4 text-purple-500" />
+      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Trazabilidades</span>
+    </div>
+    <span className="text-xs text-slate-500 dark:text-slate-400">Modal independiente</span>
+  </div>
+</div>
         
         {/* Leyenda de categorías */}
         <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">

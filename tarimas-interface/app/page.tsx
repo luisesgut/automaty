@@ -263,10 +263,10 @@ export default function Home() {
 
         // Preparar el payload con descripción y notas editables
         const fechaActual = new Date().toISOString().split('T')[0];
-        const nombreRelease = `LOAD_${fechaActual}-${consecutivo}`;
+        const nombreRelease = `LOAD_${fechaActual}_${consecutivo}`;
         
         const payloadRelease = {
-          fileName: `${nombreRelease}.xlsx`,
+          fileName: `${nombreRelease}`,
           description: description, // USAR LA DESCRIPCIÓN EDITADA POR EL USUARIO
           notes: notes, // USAR LAS NOTAS EDITADAS POR EL USUARIO
           createdBy: createdBy,
