@@ -110,34 +110,55 @@ export default function ProductSelectionModal({
   }, [isOpen, currentItems]); // MODIFICADO: agregar currentItems como dependencia
 
   // Filtrar tarimas según búsqueda y filtro
-  useEffect(() => {
-    let filtered = availableTarimas;
+// Reemplaza tu useEffect de filtrado con este código corregido:
 
-    // Aplicar búsqueda
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(tarima => 
-        tarima.nombreProducto.toLowerCase().includes(term) ||
-        tarima.claveProducto.toLowerCase().includes(term) ||
-        tarima.itemNumber.toLowerCase().includes(term) ||
-        tarima.po.toLowerCase().includes(term) ||
-        tarima.lote.toLowerCase().includes(term)
+useEffect(() => {
+  let filtered = availableTarimas;
+
+  // Aplicar búsqueda
+  if (searchTerm) {
+    const term = searchTerm.toLowerCase();
+    filtered = filtered.filter(tarima => {
+      // Función auxiliar para manejar valores null/undefined
+      const safeString = (value: any): string => {
+        return value ? String(value).toLowerCase() : '';
+      };
+      
+      return (
+        safeString(tarima.nombreProducto).includes(term) ||
+        safeString(tarima.claveProducto).includes(term) ||
+        safeString(tarima.itemNumber).includes(term) ||
+        safeString(tarima.po).includes(term) ||
+        safeString(tarima.lote).includes(term)
       );
-    }
+    });
+  }
 
-    // Aplicar filtro por categoría
-    if (filterBy === "po") {
-      // Agrupar por PO para mostrar solo unique POs
-      const uniquePOs = Array.from(new Set(filtered.map(t => t.po)));
-      filtered = filtered.filter(tarima => uniquePOs.includes(tarima.po));
-    } else if (filterBy === "product") {
-      // Agrupar por producto
-      const uniqueProducts = Array.from(new Set(filtered.map(t => t.nombreProducto)));
-      filtered = filtered.filter(tarima => uniqueProducts.includes(tarima.nombreProducto));
-    }
+  // Aplicar filtro por categoría
+  if (filterBy === "po") {
+    // Agrupar por PO para mostrar solo unique POs - filtrando valores null/undefined
+    const uniquePOs = Array.from(
+      new Set(
+        filtered
+          .map(t => t.po)
+          .filter(po => po != null && po !== '') // Filtrar valores null, undefined o vacíos
+      )
+    );
+    filtered = filtered.filter(tarima => tarima.po && uniquePOs.includes(tarima.po));
+  } else if (filterBy === "product") {
+    // Agrupar por producto - filtrando valores null/undefined
+    const uniqueProducts = Array.from(
+      new Set(
+        filtered
+          .map(t => t.nombreProducto)
+          .filter(producto => producto != null && producto !== '')
+      )
+    );
+    filtered = filtered.filter(tarima => tarima.nombreProducto && uniqueProducts.includes(tarima.nombreProducto));
+  }
 
-    setFilteredTarimas(filtered);
-  }, [availableTarimas, searchTerm, filterBy]);
+  setFilteredTarimas(filtered);
+}, [availableTarimas, searchTerm, filterBy]);
 
   // Manejar selección de tarimas
   const handleToggleSelection = (tarimaId: number) => {
