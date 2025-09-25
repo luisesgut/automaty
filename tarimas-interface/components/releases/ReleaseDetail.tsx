@@ -583,7 +583,7 @@ const handleMarkAsCompleted = async () => {
   try {
     console.log("📡 Enviando request al servidor...");
     
-    const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/Release/${releaseId}/Completado`, {
+    const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/Release/${releaseId}/Aprobado`, {
       method: 'PUT',
       headers: {
         'accept': '*/*',

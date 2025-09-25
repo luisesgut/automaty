@@ -15,13 +15,13 @@ interface ExcelResultsProps {
 }
 
 export default function ExcelResults({
-                                         apiResults,
-                                         isFetching,
-                                         error,
-                                         searchAttempted,
-                                         selectedTarimas,
-                                         onSelectTarima
-                                     }: ExcelResultsProps) {
+    apiResults,
+    isFetching,
+    error,
+    searchAttempted,
+    selectedTarimas,
+    onSelectTarima
+}: ExcelResultsProps) {
     // Estado de carga para Resultados de la Búsqueda en API
     if (isFetching) {
         return (
@@ -70,9 +70,9 @@ export default function ExcelResults({
                             Ocurrió un problema al intentar obtener los datos:
                         </p>
                         <div className="bg-red-100 dark:bg-red-800/40 border border-red-200 dark:border-red-700 rounded-lg p-3">
-              <pre className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-all font-mono">
-                {error}
-              </pre>
+                            <pre className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-all font-mono">
+                                {error}
+                            </pre>
                         </div>
                         <div className="text-sm text-red-600 dark:text-red-400">
                             <p className="font-semibold">Posibles soluciones:</p>
@@ -96,26 +96,37 @@ export default function ExcelResults({
             <div className="space-y-6">
                 <Separator className="dark:bg-slate-700"/>
 
-                {/* Header de resultados */}
-                <div className="text-center space-y-2">
-                    <h2 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-                        Resultados de la Búsqueda en Inventario
-                    </h2>
-                    <div className="flex justify-center items-center gap-4 flex-wrap">
-                        <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg px-4 py-2">
-                            <div className="flex items-center">
+                {/* Header de resultados - LAYOUT CORREGIDO */}
+                <div className="space-y-4">
+                    <div className="text-center">
+                        <h2 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+                            Resultados de la Búsqueda en Inventario
+                        </h2>
+                    </div>
+                    
+                    {/* Estadísticas en grid responsivo */}
+                    <div className="grid grid-cols-2 lg:grid-cols-2 gap-4 max-w-md mx-auto">
+                        <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-lg px-4 py-3 text-center">
+                            <div className="flex items-center justify-center mb-1">
                                 <Search className="h-4 w-4 text-green-600 dark:text-green-400 mr-2" />
                                 <span className="text-sm font-medium text-green-800 dark:text-green-200">
-                  {apiResults.length} filtros procesados
-                </span>
+                                    Filtros Procesados
+                                </span>
+                            </div>
+                            <div className="text-xl font-bold text-green-700 dark:text-green-300">
+                                {apiResults.length}
                             </div>
                         </div>
-                        <div className="bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg px-4 py-2">
-                            <div className="flex items-center">
+                        
+                        <div className="bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 rounded-lg px-4 py-3 text-center">
+                            <div className="flex items-center justify-center mb-1">
                                 <CheckCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mr-2" />
                                 <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                  {totalResults} tarimas encontradas
-                </span>
+                                    Tarimas Encontradas
+                                </span>
+                            </div>
+                            <div className="text-xl font-bold text-blue-700 dark:text-blue-300">
+                                {totalResults}
                             </div>
                         </div>
                     </div>
