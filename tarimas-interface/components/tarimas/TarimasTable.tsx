@@ -84,7 +84,7 @@ export default function TarimasTable({
                                         <TableHead className="font-semibold min-w-[120px]">Item Number</TableHead>
                                         <TableHead className="text-right font-semibold min-w-[100px]">Cantidad</TableHead>
                                         <TableHead className="font-semibold min-w-[80px]">Unidad</TableHead>
-                                        <TableHead className="text-right font-semibold min-w-[80px]">Cajas</TableHead>
+                                        <TableHead className="text-right font-semibold min-w-[80px]">Cajas / Bobinas</TableHead>
                                         <TableHead className="text-right font-semibold min-w-[100px]">Peso Neto</TableHead>
                                         <TableHead className="text-right font-semibold min-w-[100px]">Peso Bruto</TableHead>
                                         <TableHead className="font-semibold min-w-[100px]">Almacén</TableHead>
@@ -134,7 +134,22 @@ export default function TarimasTable({
                                             const isSelected = isTarimaSelected(tarima.prodEtiquetaRFIDId);
                                             const canSelect = canSelectTarima(tarima);
                                             const isAssigned = tarima.asignadoAentrega;
-                                            
+                                            const isRollUnit = tarima.uom?.toUpperCase?.() === "ROLLS";
+                                            const quantityLabel = isRollUnit ? "bobinas" : "cajas";
+                                            const perUnitLabel = isRollUnit ? "vueltas/bobina" : "pzs/caja";
+                                            const totalLabel = isRollUnit ? "vueltas totales" : "piezas totales";
+                                            const quantityWrapperClasses = isRollUnit
+                                                ? "bg-purple-50 dark:bg-purple-500/20"
+                                                : "bg-blue-50 dark:bg-blue-900/30";
+                                            const quantityValueClasses = isRollUnit
+                                                ? "text-purple-700 dark:text-purple-200"
+                                                : "text-blue-700 dark:text-blue-300";
+                                            const totalValueClasses = isRollUnit
+                                                ? "text-amber-600 dark:text-amber-300"
+                                                : "text-green-600 dark:text-green-400";
+                                            const quantityValue = typeof tarima.cajas === "number" ? tarima.cajas : null;
+                                            const quantityDisplay = quantityValue !== null ? quantityValue.toLocaleString() : "N/A";
+
                                             return (
                                                 <TableRow
                                                     key={tarima.prodEtiquetaRFIDId}
@@ -195,23 +210,29 @@ export default function TarimasTable({
                                                     </TableCell>
 
                                                     <TableCell>
-                                                        <Badge variant="outline" className="font-medium">
-                                                            {tarima.unidad}
+                                                        <Badge
+                                                            variant={isRollUnit ? "default" : "outline"}
+                                                            className={`font-medium ${isRollUnit ? "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-500/20 dark:text-purple-200 dark:border-purple-500/30" : ""}`}
+                                                        >
+                                                            {isRollUnit ? "ROLLS / Bobinas" : tarima.unidad}
                                                         </Badge>
                                                     </TableCell>
 
                                                     <TableCell className="text-center">
                                                         <div className="space-y-1">
-                                                            <div className="bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded">
-                                                                <span className="font-semibold text-blue-700 dark:text-blue-300">
-                                                                    {tarima.cajas}
+                                                            <div className={`${quantityWrapperClasses} px-2 py-1 rounded flex items-center justify-center gap-1`}>
+                                                                <span className={`font-semibold ${quantityValueClasses}`}>
+                                                                    {quantityDisplay}
+                                                                </span>
+                                                                <span className={`text-[10px] uppercase tracking-wide ${quantityValueClasses}`}>
+                                                                    {quantityLabel}
                                                                 </span>
                                                             </div>
                                                             <div className="text-xs text-muted-foreground">
-                                                                {tarima.individualUnits?.toLocaleString() || "N/A"} pzs/caja
+                                                                {(tarima.individualUnits?.toLocaleString() || "N/A")} {perUnitLabel}
                                                             </div>
-                                                            <div className="text-xs text-green-600 dark:text-green-400 font-medium">
-                                                                {tarima.totalUnits?.toLocaleString() || "N/A"} total
+                                                            <div className={`text-xs font-medium ${totalValueClasses}`}>
+                                                                {(tarima.totalUnits?.toLocaleString() || "N/A")} {totalLabel}
                                                             </div>
                                                         </div>
                                                     </TableCell>
