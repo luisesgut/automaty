@@ -1,10 +1,28 @@
 // components/tarimas/TarimasTab.tsx
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Tarima } from "@/types";
-import TarimasSearch from "./TarimasSearch";
+import TarimasSearch, { TarimaFilterMode } from "./TarimasSearch";
 import SelectedTarimasPreview from "./SelectedTarimasPreview";
 import TarimasTable from "./TarimasTable";
 import { TarimasStats } from "@/types";
+
+type HighlightField = "nombreProducto" | "lote" | "itemNumber" | "claveProducto" | "po";
+type TarimaHighlightMap = Record<number, Partial<Record<HighlightField, string[]>>>;
+
+const filterModeToField: Record<Exclude<TarimaFilterMode, "general">, HighlightField> = {
+  po: "po",
+  lote: "lote",
+  producto: "nombreProducto",
+  customerItem: "itemNumber"
+};
+
+const normalizeTarimaValue = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value).toLowerCase().trim();
+};
 
 interface TarimasTabProps {
   tarimas: Tarima[];
@@ -40,20 +58,137 @@ export default function TarimasTab({
   totalTarimasCount,
   filteredTarimasCount
 }: TarimasTabProps) {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [filterMode, setFilterMode] = useState<TarimaFilterMode>("general");
+  const [generalQuery, setGeneralQuery] = useState("");
+  const [bulkQuery, setBulkQuery] = useState("");
   const [showPreview, setShowPreview] = useState(true);
 
-  // Aplicar filtro de búsqueda sobre las tarimas ya filtradas por estado
-  const filteredTarimas = tarimas.filter((tarima) => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      tarima.nombreProducto.toLowerCase().includes(searchLower) ||
-      tarima.lote.toLowerCase().includes(searchLower) ||
-      tarima.itemNumber.toLowerCase().includes(searchLower) ||
-      tarima.claveProducto.toLowerCase().includes(searchLower)
-    );
-  });
+  const { bulkValues, bulkValuesLower } = useMemo(() => {
+    const values = bulkQuery
+      .split(/[\n,;\t]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    return {
+      bulkValues: values,
+      bulkValuesLower: values.map((value) => value.toLowerCase())
+    };
+  }, [bulkQuery]);
+
+  const { filteredTarimas, highlightMap } = useMemo<{
+    filteredTarimas: Tarima[];
+    highlightMap: TarimaHighlightMap;
+  }>(() => {
+    const highlightAccumulator: TarimaHighlightMap = {};
+
+    if (filterMode === "general") {
+      const trimmedQuery = generalQuery.trim();
+
+      if (!trimmedQuery) {
+        return {
+          filteredTarimas: tarimas,
+          highlightMap: {}
+        };
+      }
+
+      const searchLower = trimmedQuery.toLowerCase();
+
+      const result = tarimas.filter((tarima) => {
+        const fieldMatches: Partial<Record<HighlightField, string[]>> = {};
+
+        ([
+          ["nombreProducto", tarima.nombreProducto],
+          ["lote", tarima.lote],
+          ["itemNumber", tarima.itemNumber],
+          ["claveProducto", tarima.claveProducto],
+          ["po", tarima.po]
+        ] as Array<[HighlightField, unknown]>).forEach(([fieldKey, rawValue]) => {
+          if (normalizeTarimaValue(rawValue).includes(searchLower)) {
+            fieldMatches[fieldKey] = [trimmedQuery];
+          }
+        });
+
+        if (Object.keys(fieldMatches).length > 0) {
+          highlightAccumulator[tarima.prodEtiquetaRFIDId] = fieldMatches;
+          return true;
+        }
+
+        return false;
+      });
+
+      return {
+        filteredTarimas: result,
+        highlightMap: highlightAccumulator
+      };
+    }
+
+    if (bulkValuesLower.length === 0) {
+      return {
+        filteredTarimas: tarimas,
+        highlightMap: {}
+      };
+    }
+
+    const modeField = filterModeToField[filterMode as Exclude<TarimaFilterMode, "general">];
+
+    const result = tarimas.filter((tarima) => {
+      const rawValue = tarima[modeField as keyof Tarima];
+      const targetValue = normalizeTarimaValue(rawValue);
+
+      if (!targetValue) {
+        return false;
+      }
+
+      const matchedTerms: string[] = [];
+
+      bulkValuesLower.forEach((valueLower, index) => {
+        if (targetValue.includes(valueLower)) {
+          matchedTerms.push(bulkValues[index]);
+        }
+      });
+
+      const uniqueMatches = Array.from(new Set(matchedTerms.filter(Boolean)));
+
+      if (uniqueMatches.length > 0) {
+        highlightAccumulator[tarima.prodEtiquetaRFIDId] = {
+          [modeField]: uniqueMatches
+        };
+        return true;
+      }
+
+      return false;
+    });
+
+    return {
+      filteredTarimas: result,
+      highlightMap: highlightAccumulator
+    };
+  }, [filterMode, generalQuery, tarimas, bulkValuesLower, bulkValues]);
+
+  const filterSummary = useMemo(() => {
+    if (filterMode === "general") {
+      return generalQuery.trim();
+    }
+
+    if (bulkValues.length === 0) {
+      return "";
+    }
+
+    const visibleValues = bulkValues.slice(0, 3).join(", ");
+    const remainingCount = bulkValues.length - 3;
+
+    const modeLabel: Record<TarimaFilterMode, string> = {
+      general: "",
+      po: "PO",
+      lote: "Lote",
+      producto: "Producto",
+      customerItem: "Customer Item"
+    };
+
+    return remainingCount > 0
+      ? `${modeLabel[filterMode]}: ${visibleValues} (+${remainingCount} más)`
+      : `${modeLabel[filterMode]}: ${visibleValues}`;
+  }, [bulkValues, filterMode, generalQuery]);
 
   const stats = getStats();
   const weightInfo = getWeightInfo();
@@ -68,8 +203,12 @@ export default function TarimasTab({
     <div className="space-y-6">
       {/* Sección de búsqueda y filtros - ACTUALIZADA */}
       <TarimasSearch
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
+        filterMode={filterMode}
+        onFilterModeChange={setFilterMode}
+        generalQuery={generalQuery}
+        onGeneralQueryChange={setGeneralQuery}
+        bulkQuery={bulkQuery}
+        onBulkQueryChange={setBulkQuery}
         selectedCount={selectedTarimas.length}
         showPreview={showPreview}
         onTogglePreview={() => setShowPreview(!showPreview)}
@@ -100,12 +239,13 @@ export default function TarimasTab({
         tarimas={tarimas}
         filteredTarimas={filteredTarimas}
         selectedTarimas={selectedTarimas}
-        searchTerm={searchTerm}
+        filterSummary={filterSummary}
         loading={loading}
         onSelectTarima={onSelectTarima}
         weightInfo={weightInfo}
         // NUEVA PROP para mostrar el estado en la tabla
         showAllTarimas={showAllTarimas}
+        highlightMap={highlightMap}
       />
     </div>
   );

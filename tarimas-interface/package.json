@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "export": "next export"
+    "export": "next export",
+    "test": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -62,11 +63,19 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.5.1",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.3.3",
+    "jsdom": "^24.0.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^1.6.0"
   }
 }

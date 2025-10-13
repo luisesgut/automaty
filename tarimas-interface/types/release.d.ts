@@ -1,3 +1,9 @@
+export interface DestinationAssignment {
+  trazabilityIdentifier: string;
+  destino: string;
+  quantity: number;
+}
+
 export interface ShippingItem {
   id: number;
   company: string;
@@ -17,7 +23,8 @@ export interface ShippingItem {
   itemType: string;
   salesCSRNames: string;
   trazabilidades: string;
-  destino: string;
+  destino?: string | null;
+  destinations?: DestinationAssignment[];
   idReleaseCliente?: string | null; 
   createdDate: string;
   modifiedDate: string | null;

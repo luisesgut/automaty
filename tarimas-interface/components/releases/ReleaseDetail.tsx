@@ -8,7 +8,82 @@ import EditableShippingTable from "./EditableShippingTable";
 import PreviewModal from "./PreviewModal";
 import ProductSelectionModal from "./ProductSelectionModal";
 
-import { ShippingItem, ReleaseDetailData } from "@/types/release";
+import { ShippingItem, ReleaseDetailData, DestinationAssignment } from "@/types/release";
+
+const parseTraceabilityList = (value: unknown): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item.trim() : String(item || "").trim()))
+      .filter((item): item is string => item.length > 0);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => (typeof item === "string" ? item.trim() : String(item || "").trim()))
+          .filter((item): item is string => item.length > 0);
+      }
+    } catch {
+      return trimmed
+        .split(/[\s,;|]+/)
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+    }
+  }
+
+  return [];
+};
+
+const ensureDestinationAssignments = (item: ShippingItem): DestinationAssignment[] => {
+  if (Array.isArray(item.destinations) && item.destinations.length > 0) {
+    return item.destinations
+      .map((dest) => {
+        const identifier = (dest?.trazabilityIdentifier ?? "").trim();
+        if (!identifier) {
+          return null;
+        }
+        const destinoValue = (dest?.destino ?? "").trim();
+        return {
+          trazabilityIdentifier: identifier,
+          destino: destinoValue,
+          quantity: 0,
+        };
+      })
+      .filter((dest): dest is DestinationAssignment => Boolean(dest));
+  }
+
+  const traceabilities = parseTraceabilityList(item.trazabilidades);
+  const fallbackDestino = (item.destino ?? "").trim();
+
+  return traceabilities.map((trazabilityIdentifier) => ({
+    trazabilityIdentifier,
+    destino: fallbackDestino,
+    quantity: 0,
+  }));
+};
+
+const normalizeShippingItem = (item: ShippingItem): ShippingItem => {
+  const destinations = ensureDestinationAssignments(item);
+  const normalizedDestino =
+    destinations.length === 1 ? destinations[0].destino : (item.destino ?? "").trim();
+
+  return {
+    ...item,
+    destino: normalizedDestino,
+    destinations,
+  };
+};
 
 interface ReleaseDetailProps {
   releaseId: number;
@@ -47,13 +122,21 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
         throw new Error(`Error al cargar detalle del release: ${response.status}`);
       }
       
-      const data = await response.json();
+      const data: ReleaseDetailData = await response.json();
       console.log("🚀 Datos recibidos del GET:", data);
-      setReleaseData(data);
+
+      const normalizedItems: ShippingItem[] = (data.shippingItems ?? []).map((item: ShippingItem) =>
+        normalizeShippingItem(item)
+      );
+      const normalizedData: ReleaseDetailData = {
+        ...data,
+        shippingItems: normalizedItems,
+      };
+
+      setReleaseData(normalizedData);
       
-      const allItems = data.shippingItems;
-      setEditingItems([...allItems]);
-      setOriginalItems([...allItems]);
+      setEditingItems([...normalizedItems]);
+      setOriginalItems([...normalizedItems]);
       if (data.status && data.status.toLowerCase() === 'aprobado') {
         setIsCompleted(true);
       } else {
@@ -87,17 +170,23 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
 
   // Función para actualizar items localmente (sin guardar automáticamente)
   const handleUpdateItem = (updatedItem: ShippingItem) => {
+    const normalizedItem = normalizeShippingItem(updatedItem);
     setEditingItems(prev => 
       prev.map(item => 
-        item.id === updatedItem.id ? updatedItem : item
+        item.id === normalizedItem.id ? normalizedItem : item
       )
     );
   };
 
   // Guardar cambio individual de item automáticamente
- const handleUpdateItemWithSave = async (updatedItem: ShippingItem) => {
-    console.log("🚀 handleUpdateItemWithSave llamado con:", updatedItem);
-    
+const handleUpdateItemWithSave = async (updatedItem: ShippingItem) => {
+   console.log("🚀 handleUpdateItemWithSave llamado con:", updatedItem);
+
+    const normalizedItem = normalizeShippingItem(updatedItem);
+    const destinationAssignments = normalizedItem.destinations ?? ensureDestinationAssignments(normalizedItem);
+    const defaultDestino =
+      destinationAssignments.length === 1 ? destinationAssignments[0].destino : (normalizedItem.destino || "");
+
     setUpdatingItemId(updatedItem.id); // <-- 1. MOSTRAMOS EL MODAL
 
     // Guardamos el estado anterior en caso de que necesitemos revertir
@@ -106,30 +195,31 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
     // Actualización Optimista: Actualizamos la UI inmediatamente
     setEditingItems(prev => 
       prev.map(item => 
-        item.id === updatedItem.id ? updatedItem : item
+        item.id === normalizedItem.id ? normalizedItem : item
       )
     );
 
     try {
       const payload = {
-        id: updatedItem.id,
-        quantityAlreadyShipped: updatedItem.quantityAlreadyShipped || "0",
-        pallets: updatedItem.pallets || 0,
-        casesPerPallet: updatedItem.casesPerPallet || 0,
-        unitsPerCase: updatedItem.unitsPerCase || 0,
-        grossWeight: updatedItem.grossWeight || 0,
-        netWeight: updatedItem.netWeight || 0,
-        itemType: updatedItem.itemType || "Finished Good",
-        salesCSRNames: updatedItem.salesCSRNames || "Equipo Ventas",
-        trazabilidades: updatedItem.trazabilidades || "",
-        destino: updatedItem.destino || "",
-        idReleaseCliente: updatedItem.idReleaseCliente || "",
-        modifiedBy: updatedItem.modifiedBy || "Sistema Web"
+        id: normalizedItem.id,
+        quantityAlreadyShipped: normalizedItem.quantityAlreadyShipped || "0",
+        pallets: normalizedItem.pallets || 0,
+        casesPerPallet: normalizedItem.casesPerPallet || 0,
+        unitsPerCase: normalizedItem.unitsPerCase || 0,
+        grossWeight: normalizedItem.grossWeight || 0,
+        netWeight: normalizedItem.netWeight || 0,
+        itemType: normalizedItem.itemType || "Finished Good",
+        salesCSRNames: normalizedItem.salesCSRNames || "Equipo Ventas",
+        trazabilidades: normalizedItem.trazabilidades || "",
+        destino: defaultDestino,
+        destinations: destinationAssignments,
+        idReleaseCliente: normalizedItem.idReleaseCliente || "",
+        modifiedBy: normalizedItem.modifiedBy || "Sistema Web"
       };
 
       console.log("📦 Payload a enviar:", payload);
 
-      const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/shipping-item/update/${updatedItem.id}`, {
+      const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/shipping-item/update/${normalizedItem.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify(payload),
@@ -141,7 +231,7 @@ export default function ReleaseDetail({ releaseId, onBack }: ReleaseDetailProps)
           title: "Campo actualizado",
           description: "El cambio se ha guardado exitosamente.",
         });
-        setOriginalItems(prev => prev.map(item => item.id === updatedItem.id ? updatedItem : item));
+        setOriginalItems(prev => prev.map(item => item.id === normalizedItem.id ? normalizedItem : item));
       } else {
         const errorMsg = await response.text();
         setEditingItems(previousItems); // Revertimos el cambio en la UI
@@ -299,33 +389,38 @@ const handleAddProducts = async (newProducts: ShippingItem[]) => {
     for (const product of newProducts) {
       try {
         // APLICAR LA MISMA LÓGICA DE CONSOLIDACIÓN QUE EN PAGE.TSX
-        const company = "BioFlex";
-        const shipDate = new Date().toISOString();
-        const quantityAlreadyShipped = "0";
-        const itemType = "Finished Good";
-        const salesCSRNames = "Equipo Ventas";
-        const destino = "Local"; // Valor por defecto
-        const idReleaseCliente = ""; // Valor por defecto
+        const normalizedProduct = normalizeShippingItem(product);
+        const company = normalizedProduct.company || "BioFlex";
+        const shipDate = product.shipDate || new Date().toISOString();
+        const quantityAlreadyShipped = normalizedProduct.quantityAlreadyShipped || "0";
+        const itemType = normalizedProduct.itemType || "Finished Good";
+        const salesCSRNames = normalizedProduct.salesCSRNames || "Equipo Ventas";
+        const idReleaseCliente = normalizedProduct.idReleaseCliente || "";
+        const destinationAssignments =
+          normalizedProduct.destinations ?? ensureDestinationAssignments(normalizedProduct);
+        const defaultDestino =
+          destinationAssignments.length === 1 ? destinationAssignments[0].destino : (normalizedProduct.destino || "");
         
         // Usar los datos del producto pero con valores más completos
         const payload = {
           company: company,
           shipDate: shipDate,
-          poNumber: product.poNumber || "",
-          sap: product.sap || "", // IMPORTANTE: Asegurar que este campo venga del producto
-          claveProducto: product.claveProducto || "",
-          customerItemNumber: product.customerItemNumber || "",
-          itemDescription: product.itemDescription || "",
+          poNumber: normalizedProduct.poNumber || "",
+          sap: normalizedProduct.sap || "", // IMPORTANTE: Asegurar que este campo venga del producto
+          claveProducto: normalizedProduct.claveProducto || "",
+          customerItemNumber: normalizedProduct.customerItemNumber || "",
+          itemDescription: normalizedProduct.itemDescription || "",
           quantityAlreadyShipped: quantityAlreadyShipped,
-          pallets: product.pallets || 0,
-          casesPerPallet: product.casesPerPallet || 0,
-          unitsPerCase: product.unitsPerCase || 0, // IMPORTANTE: Asegurar que este campo venga del producto
-          grossWeight: product.grossWeight || 0,
-          netWeight: product.netWeight || 0,
+          pallets: normalizedProduct.pallets || 0,
+          casesPerPallet: normalizedProduct.casesPerPallet || 0,
+          unitsPerCase: normalizedProduct.unitsPerCase || 0, // IMPORTANTE: Asegurar que este campo venga del producto
+          grossWeight: normalizedProduct.grossWeight || 0,
+          netWeight: normalizedProduct.netWeight || 0,
           itemType: itemType,
           salesCSRNames: salesCSRNames,
-          trazabilidades: product.trazabilidades || "[]", // Mantener formato JSON
-          destino: destino,
+          trazabilidades: normalizedProduct.trazabilidades || "[]", // Mantener formato JSON
+          destino: defaultDestino,
+          destinations: destinationAssignments,
           idReleaseCliente: idReleaseCliente,
           modifiedBy: "Sistema Web"
         };
@@ -425,31 +520,38 @@ const handleSaveReleaseChanges = async () => {
     // Actualizar items modificados usando el endpoint PUT por item
     for (const item of changedItems) {
       try {
+        const normalizedItem = normalizeShippingItem(item);
+        const destinationAssignments =
+          normalizedItem.destinations ?? ensureDestinationAssignments(normalizedItem);
+        const defaultDestino =
+          destinationAssignments.length === 1 ? destinationAssignments[0].destino : (normalizedItem.destino || "");
+
         const payload = {
-          id: item.id,
-          company: item.company || "BioFlex",
-          tableName: item.tableName || "default_table",
-          shipDate: item.shipDate || new Date().toISOString(),
-          poNumber: item.poNumber || "",
-          sap: item.sap || "",
-          claveProducto: item.claveProducto || "",
-          customerItemNumber: item.customerItemNumber || "",
-          itemDescription: item.itemDescription || "",
-          quantityAlreadyShipped: item.quantityAlreadyShipped || "0",
-          pallets: item.pallets || 0,
-          casesPerPallet: item.casesPerPallet || 0,
-          unitsPerCase: item.unitsPerCase || 0,
-          grossWeight: item.grossWeight || 0,
-          netWeight: item.netWeight || 0,
-          itemType: item.itemType || "Finished Good",
-          salesCSRNames: item.salesCSRNames || "Equipo Ventas",
-          trazabilidades: item.trazabilidades || "",
-          destino: item.destino || "Local",
-          idReleaseCliente: item.idReleaseCliente || "",
+          id: normalizedItem.id,
+          company: normalizedItem.company || "BioFlex",
+          tableName: normalizedItem.tableName || "default_table",
+          shipDate: normalizedItem.shipDate || new Date().toISOString(),
+          poNumber: normalizedItem.poNumber || "",
+          sap: normalizedItem.sap || "",
+          claveProducto: normalizedItem.claveProducto || "",
+          customerItemNumber: normalizedItem.customerItemNumber || "",
+          itemDescription: normalizedItem.itemDescription || "",
+          quantityAlreadyShipped: normalizedItem.quantityAlreadyShipped || "0",
+          pallets: normalizedItem.pallets || 0,
+          casesPerPallet: normalizedItem.casesPerPallet || 0,
+          unitsPerCase: normalizedItem.unitsPerCase || 0,
+          grossWeight: normalizedItem.grossWeight || 0,
+          netWeight: normalizedItem.netWeight || 0,
+          itemType: normalizedItem.itemType || "Finished Good",
+          salesCSRNames: normalizedItem.salesCSRNames || "Equipo Ventas",
+          trazabilidades: normalizedItem.trazabilidades || "",
+          destino: defaultDestino,
+          destinations: destinationAssignments,
+          idReleaseCliente: normalizedItem.idReleaseCliente || "",
           modifiedBy: "Sistema Web"
         };
 
-        const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/UpdateItem/${item.id}`, {
+        const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/UpdateItem/${normalizedItem.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -469,7 +571,9 @@ const handleSaveReleaseChanges = async () => {
     }
 
     // Actualizar estados
-    setOriginalItems([...editingItems]);
+    const normalizedCurrentItems = editingItems.map(item => normalizeShippingItem(item));
+    setEditingItems([...normalizedCurrentItems]);
+    setOriginalItems([...normalizedCurrentItems]);
     setHasUnsavedChanges(false);
     setIsEditingRelease(false);
     
@@ -504,7 +608,6 @@ const handleMarkAsCompleted = async () => {
     { key: 'pallets', label: 'Pallets' },
     { key: 'grossWeight', label: 'Peso Bruto' },
     { key: 'netWeight', label: 'Peso Neto' },
-    { key: 'destino', label: 'Destino' },
     { key: 'salesCSRNames', label: 'CSR Ventas' },
     { key: 'modifiedBy', label: 'Modificado Por' }
   ];
@@ -528,6 +631,17 @@ const handleMarkAsCompleted = async () => {
       }
     });
     
+    const destinationAssignments = ensureDestinationAssignments(item);
+    if (destinationAssignments.length === 0) {
+      missingFields.push('Destinos (sin trazabilidades)');
+    } else {
+      const unassignedDestinations = destinationAssignments.filter(dest => !dest.destino || dest.destino.trim() === '');
+      if (unassignedDestinations.length > 0) {
+        const identifiers = unassignedDestinations.map(dest => dest.trazabilityIdentifier).join(', ');
+        missingFields.push(`Destinos sin asignar (${identifiers})`);
+      }
+    }
+
     if (missingFields.length > 0) {
       validationErrors.push({
         itemId: item.id,

@@ -15,9 +15,36 @@ interface TarimasStatsProps {
         enLimite: boolean;
     };
     selectedTarimas?: any[]; // Para calcular estadísticas de unidades
+    productGroups?: Array<{
+        key: string;
+        nombreProducto: string;
+        itemNumber: string;
+        color: {
+            container: string;
+            headerText: string;
+            badge: string;
+            chip: string;
+            chipText: string;
+        };
+        stats: {
+            totalCajas: number;
+            totalPesoBruto: number;
+            totalPesoNeto: number;
+            totalUnits: number;
+            promedioUnidadesCaja: number;
+            cantidadFormateada: string;
+            unidadPredominante: string;
+            tarimasCount: number;
+        };
+    }>;
 }
 
-export default function TarimasStatsComponent({ stats, weightInfo, selectedTarimas = [] }: TarimasStatsProps) {
+export default function TarimasStatsComponent({
+                                                   stats,
+                                                   weightInfo,
+                                                   selectedTarimas = [],
+                                                   productGroups = []
+                                               }: TarimasStatsProps) {
     // Calcular estadísticas de unidades
     const totalIndividualUnits = selectedTarimas.reduce((sum, t) => sum + (t.individualUnits || 0), 0);
     const totalUnitsGlobal = selectedTarimas.reduce((sum, t) => sum + (t.totalUnits || 0), 0);
@@ -88,6 +115,8 @@ export default function TarimasStatsComponent({ stats, weightInfo, selectedTarim
         }
     ];
 
+    const hasProductGroups = productGroups.length > 0;
+
     return (
         <div className="space-y-4">
             {/* Indicador de peso (si se proporciona la información) */}
@@ -95,33 +124,107 @@ export default function TarimasStatsComponent({ stats, weightInfo, selectedTarim
                 <WeightIndicator {...weightInfo} />
             )}
 
-            {/* Estadísticas regulares */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                {statCards.map((stat) => {
-                    const Icon = stat.icon;
-                    return (
+            {hasProductGroups ? (
+                <div className="grid grid-cols-1 gap-4">
+                    {productGroups.map((group) => (
                         <Card
-                            key={stat.title}
-                            className={`${stat.bgColor} ${stat.borderColor} border-2 transition-all duration-200 hover:scale-105 hover:shadow-lg`}
+                            key={`${group.key}-stats`}
+                            className={`border-2 transition-all duration-200 hover:shadow-md ${group.color.container}`}
                         >
-                            <CardContent className="pt-4 pb-3 px-4">
-                                <div className="flex flex-col items-center text-center space-y-2">
-                                    <div className={`${stat.bgColor} p-3 rounded-full border ${stat.borderColor} shadow-sm`}>
-                                        <Icon className={`h-5 w-5 ${stat.iconColor}`} />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                                        <p className="text-xl font-bold tracking-tight" style={{ wordBreak: "break-word" }}>
-                                            {stat.value}
+                            <CardContent className="pt-5 pb-4 px-5 space-y-4">
+                                <div className="space-y-1">
+                                    <p className={`text-xs uppercase tracking-wide font-semibold ${group.color.headerText}`}>
+                                        Item {group.itemNumber || "-"} · {group.stats.tarimasCount} tarima(s)
+                                    </p>
+                                    <h4 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
+                                        {group.nombreProducto}
+                                    </h4>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 text-sm">
+                                    <div className={`${group.color.chip} rounded-lg p-3 shadow-sm`}>
+                                        <p className="text-xs font-medium text-muted-foreground">Total Cajas</p>
+                                        <p className={`text-sm font-semibold ${group.color.chipText}`}>
+                                            {group.stats.totalCajas.toLocaleString()}
                                         </p>
-                                        <p className="text-xs text-muted-foreground">{stat.subtitle}</p>
+                                        <p className="text-[11px] text-muted-foreground">{group.stats.tarimasCount} tarima(s)</p>
+                                    </div>
+                                    <div className={`${group.color.chip} rounded-lg p-3 shadow-sm`}>
+                                        <p className="text-xs font-medium text-muted-foreground">Pzs/Caja</p>
+                                        <p className={`text-sm font-semibold ${group.color.chipText}`}>
+                                            {group.stats.promedioUnidadesCaja > 0
+                                                ? group.stats.promedioUnidadesCaja.toLocaleString()
+                                                : "N/A"}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">Promedio</p>
+                                    </div>
+                                    <div className={`${group.color.chip} rounded-lg p-3 shadow-sm`}>
+                                        <p className="text-xs font-medium text-muted-foreground">Total Unidades</p>
+                                        <p className={`text-sm font-semibold ${group.color.chipText}`}>
+                                            {group.stats.totalUnits.toLocaleString()}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">Piezas totales</p>
+                                    </div>
+                                    <div className={`${group.color.chip} rounded-lg p-3 shadow-sm`}>
+                                        <p className="text-xs font-medium text-muted-foreground">Cantidad</p>
+                                        <p className={`text-sm font-semibold ${group.color.chipText}`}>
+                                            {group.stats.cantidadFormateada}
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {group.stats.unidadPredominante || "Sin unidad"}
+                                        </p>
+                                    </div>
+                                    <div className={`${group.color.chip} rounded-lg p-3 shadow-sm`}>
+                                        <p className="text-xs font-medium text-muted-foreground">Peso Bruto</p>
+                                        <p className={`text-sm font-semibold ${group.color.chipText}`}>
+                                            {group.stats.totalPesoBruto.toLocaleString()} kg
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {(group.stats.totalPesoBruto / 1000).toFixed(1)}T
+                                        </p>
+                                    </div>
+                                    <div className={`${group.color.chip} rounded-lg p-3 shadow-sm`}>
+                                        <p className="text-xs font-medium text-muted-foreground">Peso Neto</p>
+                                        <p className={`text-sm font-semibold ${group.color.chipText}`}>
+                                            {group.stats.totalPesoNeto.toLocaleString()} kg
+                                        </p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {(group.stats.totalPesoNeto / 1000).toFixed(1)}T
+                                        </p>
                                     </div>
                                 </div>
                             </CardContent>
                         </Card>
-                    );
-                })}
-            </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                    {statCards.map((stat) => {
+                        const Icon = stat.icon;
+                        return (
+                            <Card
+                                key={stat.title}
+                                className={`${stat.bgColor} ${stat.borderColor} border-2 transition-all duration-200 hover:scale-105 hover:shadow-lg`}
+                            >
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex flex-col items-center text-center space-y-2">
+                                        <div className={`${stat.bgColor} p-3 rounded-full border ${stat.borderColor} shadow-sm`}>
+                                            <Icon className={`h-5 w-5 ${stat.iconColor}`} />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+                                            <p className="text-xl font-bold tracking-tight" style={{ wordBreak: "break-word" }}>
+                                                {stat.value}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">{stat.subtitle}</p>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

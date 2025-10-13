@@ -1,23 +1,23 @@
 // types/index.ts
 
 export interface Tarima {
-    claveProducto: string;
-    lote: string;
-    nombreProducto: string;
-    unidad: string;
-    almacen: string;
-    cantidad: number;
-    po: string;
-    pesoBruto: number;
-    pesoNeto: number;
-    cajas: number;
-    ordenSAP: string;
+    claveProducto: string | null;
+    lote: string | null;
+    nombreProducto: string | null;
+    unidad: string | null;
+    almacen: string | null;
+    cantidad: number | null;
+    po: string | null;
+    pesoBruto: number | null;
+    pesoNeto: number | null;
+    cajas: number | null;
+    ordenSAP: string | null;
     prodEtiquetaRFIDId: number;
-    itemNumber: string;
-    individualUnits: number;
-    totalUnits: number;
-    uom: string;
-    asignadoAentrega: boolean;
+    itemNumber: string | null;
+    individualUnits: number | null;
+    totalUnits: number | null;
+    uom: string | null;
+    asignadoAentrega: boolean | null;
 }
 
 export interface ParsedExcelItem {

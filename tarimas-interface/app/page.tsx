@@ -4,6 +4,8 @@
 import { useState, useMemo } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/components/ui/use-toast";
+import ErrorBoundary from "@/components/shared/ErrorBoundary";
+import { useGlobalErrorHandler } from "@/hooks/useGlobalErrorHandler";
 
 // Hooks personalizados
 import { useTarimas } from "@/hooks/useTarimas";
@@ -12,6 +14,7 @@ import { useSelection } from "@/hooks/useSelection";
 // Componentes de layout
 import Header from "@/components/layout/Header";
 import TabNavigation from "@/components/layout/TabNavigation";
+import Footer from "@/components/layout/Footer";
 
 // Componentes de tarimas
 import TarimasTab from "@/components/tarimas/TarimasTab";
@@ -31,6 +34,7 @@ type ActiveTab = "tarimas" | "excel" | "releases";
 type ProcessingStep = "idle" | "updating-status" | "creating-release" | "completed" | "error";
 
 export default function Home() {
+  useGlobalErrorHandler();
   // Estados principales
   const [activeTab, setActiveTab] = useState<ActiveTab>("tarimas");
   const [showProcessModal, setShowProcessModal] = useState(false);
@@ -380,7 +384,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-50">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 text-slate-900 dark:text-slate-50">
       <Toaster />
 
       {/* Header */}
@@ -438,6 +443,8 @@ export default function Home() {
         )}
       </main>
 
+      <Footer />
+
       {/* Process Modal - ACTUALIZADO para recibir descripción y notas */}
       <ProcessModal
         isOpen={showProcessModal}
@@ -448,6 +455,7 @@ export default function Home() {
         processingStep={processingStep}
         processingMessage={processingMessage}
       />
-    </div>
+      </div>
+    </ErrorBoundary>
   );
 }

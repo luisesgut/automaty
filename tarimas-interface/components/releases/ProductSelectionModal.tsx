@@ -10,24 +10,25 @@ import { toast } from "@/components/ui/use-toast";
 import { Search, Plus, Package, Filter, Loader2 } from "lucide-react";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import { ShippingItem } from "@/types/release";
+import { formatNumber, formatNumberWithUnit, formatString, coerceBoolean } from "@/utils/formatters";
 
 // Interfaz para las tarimas disponibles (simplificada para selección)
 interface AvailableTarima {
   prodEtiquetaRFIDId: number;
-  nombreProducto: string;
-  claveProducto: string;
-  itemNumber: string;
-  po: string;
-  lote: string;
-  cantidad: number;
-  unidad: string;
-  cajas: number;
-  pesoBruto: number;
-  pesoNeto: number;
-  almacen: string;
-  individualUnits?: number;
-  totalUnits?: number;
-  ordenSAP?: string; // Added missing property
+  nombreProducto: string | null;
+  claveProducto: string | null;
+  itemNumber: string | null;
+  po: string | null;
+  lote: string | null;
+  cantidad: number | null;
+  unidad: string | null;
+  cajas: number | null;
+  pesoBruto: number | null;
+  pesoNeto: number | null;
+  almacen: string | null;
+  individualUnits: number | null; // ¡Cambio clave aquí!
+  totalUnits: number | null;      // ¡Cambio clave aquí!
+  ordenSAP: string | null;        // Hazlo no opcional si siempre se mapea a null/string
 }
 
 interface ProductSelectionModalProps {
@@ -37,6 +38,60 @@ interface ProductSelectionModalProps {
   currentItems: ShippingItem[];
   isLoading?: boolean; // NUEVO: prop para manejar estado de carga desde el padre
 }
+
+const toNullableString = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const stringValue = String(value).trim();
+  return stringValue ? stringValue : null;
+};
+
+const toNullableNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && !Number.isNaN(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+
+  return null;
+};
+
+// Reutilizar la lógica de deduplicación por lote usada en la vista principal
+const dedupeTarimasByLote = (tarimas: AvailableTarima[]): AvailableTarima[] => {
+  const seen = new Set<string>();
+
+  return tarimas.filter((tarima) => {
+    const loteValue = tarima.lote;
+
+    if (loteValue === null || loteValue === undefined) {
+      return true;
+    }
+
+    const normalizedLote = typeof loteValue === "number"
+      ? String(loteValue)
+      : loteValue.trim().toLowerCase();
+
+    if (!normalizedLote) {
+      return true;
+    }
+
+    if (seen.has(normalizedLote)) {
+      return false;
+    }
+
+    seen.add(normalizedLote);
+    return true;
+  });
+};
 
 export default function ProductSelectionModal({ 
   isOpen, 
@@ -68,14 +123,41 @@ export default function ProductSelectionModal({
       console.log(`📦 Tarimas recibidas del servidor: ${data.length}`);
       
       // Filtrar solo las que no están asignadas a entrega
-      const available = data.filter((tarima: any) => !tarima.asignadoAentrega);
+      const available = data.filter((tarima: any) => !coerceBoolean(tarima.asignadoAentrega));
       console.log(`✅ Tarimas disponibles (no asignadas): ${available.length}`);
       
       // Obtener los RFIDs que ya están en el release actual
-      const currentRFIDs = new Set(
-        currentItems.map(item => 
-          item.trazabilidades?.split(',').map(id => parseInt(id.trim()))
-        ).flat().filter(Boolean)
+      const currentRFIDs = new Set<number>(
+        currentItems.flatMap((item) => {
+          if (!item.trazabilidades) {
+            return [];
+          }
+
+          try {
+            const parsed = JSON.parse(item.trazabilidades);
+            if (Array.isArray(parsed)) {
+              return parsed
+                .map((value) => {
+                  if (typeof value === "number") {
+                    return value;
+                  }
+                  const numericValue = Number(String(value).trim());
+                  return Number.isFinite(numericValue) ? numericValue : null;
+                })
+                .filter((value): value is number => value !== null);
+            }
+          } catch (error) {
+            // Ignorar errores y usar fallback basado en comas
+          }
+
+          return item.trazabilidades
+            .split(",")
+            .map((part) => {
+              const parsed = Number(part.trim());
+              return Number.isFinite(parsed) ? parsed : null;
+            })
+            .filter((value): value is number => value !== null);
+        })
       );
       console.log(`🎯 RFIDs ya en el release: ${Array.from(currentRFIDs).join(', ')}`);
       
@@ -85,8 +167,39 @@ export default function ProductSelectionModal({
       );
       console.log(`🆕 Tarimas no en release: ${notInRelease.length}`);
       
-      setAvailableTarimas(notInRelease);
-      setFilteredTarimas(notInRelease);
+      const dedupedTarimas = dedupeTarimasByLote(notInRelease);
+      console.log(`🧹 Tarimas únicas por lote: ${dedupedTarimas.length}`);
+
+      const normalizedTarimas: AvailableTarima[] = dedupedTarimas
+  .map((tarima) => { // ✅ SIN ANOTACIÓN EXPLÍCITA
+    const prodEtiquetaRFIDId = toNullableNumber(tarima.prodEtiquetaRFIDId);
+
+          if (prodEtiquetaRFIDId === null) {
+            return null;
+          }
+
+          return {
+            prodEtiquetaRFIDId,
+            nombreProducto: toNullableString(tarima.nombreProducto),
+            claveProducto: toNullableString(tarima.claveProducto),
+            itemNumber: toNullableString(tarima.itemNumber),
+            po: toNullableString(tarima.po),
+            lote: toNullableString(tarima.lote),
+            cantidad: toNullableNumber(tarima.cantidad),
+            unidad: toNullableString(tarima.unidad),
+            cajas: toNullableNumber(tarima.cajas),
+            pesoBruto: toNullableNumber(tarima.pesoBruto),
+            pesoNeto: toNullableNumber(tarima.pesoNeto),
+            almacen: toNullableString(tarima.almacen),
+            individualUnits: toNullableNumber(tarima.individualUnits ?? null),
+            totalUnits: toNullableNumber(tarima.totalUnits ?? null),
+            ordenSAP: toNullableString(tarima.ordenSAP),
+          };
+        })
+        .filter((tarima): tarima is AvailableTarima => tarima !== null);
+
+      setAvailableTarimas(normalizedTarimas);
+      setFilteredTarimas(normalizedTarimas);
       
     } catch (err) {
       console.error("❌ Error fetching available tarimas:", err);
@@ -110,7 +223,6 @@ export default function ProductSelectionModal({
   }, [isOpen, currentItems]); // MODIFICADO: agregar currentItems como dependencia
 
   // Filtrar tarimas según búsqueda y filtro
-// Reemplaza tu useEffect de filtrado con este código corregido:
 
 useEffect(() => {
   let filtered = availableTarimas;
@@ -196,13 +308,10 @@ useEffect(() => {
   };
 
   // Convertir tarimas seleccionadas a ShippingItems
-// En ProductSelectionModal.tsx
-
-  // REEMPLAZA tu función convertToShippingItems con esta:
   const convertToShippingItems = (tarimas: AvailableTarima[]): ShippingItem[] => {
     // Agrupar por producto (PO + ItemNumber)
     const grouped = tarimas.reduce((acc, tarima) => {
-      const key = `${tarima.po}-${tarima.itemNumber}`;
+      const key = `${tarima.po ?? "sin-po"}-${tarima.itemNumber ?? "sin-item"}`;
       if (!acc[key]) {
         acc[key] = [];
       }
@@ -213,23 +322,31 @@ useEffect(() => {
     // Crear ShippingItems consolidados, igual que en page.tsx
     return Object.values(grouped).map((tarimasDelProducto) => {
       const firstTarima = tarimasDelProducto[0];
-      const totalPesoBruto = tarimasDelProducto.reduce((sum, t) => sum + t.pesoBruto, 0);
-      const totalPesoNeto = tarimasDelProducto.reduce((sum, t) => sum + t.pesoNeto, 0);
+      const totalPesoBruto = tarimasDelProducto.reduce((sum, t) => sum + (t.pesoBruto ?? 0), 0);
+      const totalPesoNeto = tarimasDelProducto.reduce((sum, t) => sum + (t.pesoNeto ?? 0), 0);
       const totalPallets = tarimasDelProducto.length;
-      const cajasPorPallet = firstTarima.cajas;
+      const casesPerPallet = firstTarima.cajas ?? 0;
       
       // --- ✅ CORRECCIÓN 1: Trazabilidades ---
       // Se guardan los NÚMEROS DE LOTE en formato JSON, no los RFIDs.
       // Y nos aseguramos que sea de 13 dígitos rellenando con ceros a la izquierda si es necesario.
-      const trazabilidades = JSON.stringify(
-        tarimasDelProducto.map(t => String(t.lote).padStart(13, '0'))
-      );
+      const lotNumbers = tarimasDelProducto
+        .map((t) => (t.lote ?? "").trim())
+        .filter((lote) => lote.length > 0)
+        .map((lote) => lote.padStart(13, "0"));
+      const trazabilidades = JSON.stringify(lotNumbers);
+      const destinationAssignments = lotNumbers.map((trazabilityIdentifier) => ({
+        trazabilityIdentifier,
+        destino: "",
+        quantity: 0,
+      }));
 
       // --- ✅ CORRECCIÓN 2: Campos Financieros y SAP ---
-      const unitsPerCase = firstTarima.individualUnits || 0;
-      const sapValue = firstTarima.ordenSAP || "";
+      const unitsPerCase = firstTarima.individualUnits ?? 0;
+      const sapValue = firstTarima.ordenSAP ?? "";
       const precioPorUnidad = 0; // Valor por defecto
-      const pesoPorPieza = unitsPerCase > 0 ? totalPesoNeto / (totalPallets * cajasPorPallet * unitsPerCase) : 0;
+      const piecesDenominator = totalPallets * casesPerPallet * unitsPerCase;
+      const pesoPorPieza = piecesDenominator > 0 ? totalPesoNeto / piecesDenominator : 0;
       const costoTotal = 0; // Valor por defecto
       const valorAduanal = 0; // Valor por defecto
 
@@ -237,20 +354,21 @@ useEffect(() => {
         id: -Math.floor(Math.random() * 100000), // ID temporal negativo
         company: "BioFlex",
         shipDate: new Date().toISOString(),
-        poNumber: firstTarima.po,
+        poNumber: firstTarima.po ?? "",
         sap: sapValue, // Trazabilidad ahora va en SAP
-        claveProducto: firstTarima.claveProducto,
-        customerItemNumber: firstTarima.itemNumber,
-        itemDescription: firstTarima.nombreProducto,
+        claveProducto: firstTarima.claveProducto ?? "",
+        customerItemNumber: firstTarima.itemNumber ?? "",
+        itemDescription: firstTarima.nombreProducto ?? "",
         quantityAlreadyShipped: "0",
         pallets: totalPallets,
-        casesPerPallet: cajasPorPallet,
+        casesPerPallet,
         unitsPerCase: unitsPerCase,
         grossWeight: totalPesoBruto,
         netWeight: totalPesoNeto,
         itemType: "Finished Good",
         salesCSRNames: "Equipo Ventas",
         trazabilidades: trazabilidades, // Lotes en formato JSON
+        destinations: destinationAssignments,
         
         // Campos financieros añadidos
         precioPorUnidad: precioPorUnidad,
@@ -306,8 +424,14 @@ useEffect(() => {
     onClose();
   };
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      handleClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-5xl w-full h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader className="border-b pb-4">
           <DialogTitle className="text-xl flex items-center space-x-2">
@@ -429,40 +553,44 @@ useEffect(() => {
                   onClick={() => handleToggleSelection(tarima.prodEtiquetaRFIDId)}
                 >
                   <div className="flex items-center space-x-3">
-                    <Checkbox
-                      checked={selectedTarimas.has(tarima.prodEtiquetaRFIDId)}
-                      onChange={() => handleToggleSelection(tarima.prodEtiquetaRFIDId)}
-                      disabled={isLoading} // NUEVO: disabled durante carga
-                    />
+                  <Checkbox
+                    checked={selectedTarimas.has(tarima.prodEtiquetaRFIDId)}
+                    onCheckedChange={() => handleToggleSelection(tarima.prodEtiquetaRFIDId)}
+                    disabled={isLoading} // NUEVO: disabled durante carga
+                  />
                     
                     <div className="flex-1 grid grid-cols-6 gap-4 text-sm">
                       <div>
-                        <div className="font-medium">{tarima.nombreProducto}</div>
-                        <div className="text-gray-500 text-xs">{tarima.claveProducto}</div>
+                        <div className="font-medium">{formatString(tarima.nombreProducto)}</div>
+                        <div className="text-gray-500 text-xs">{formatString(tarima.claveProducto)}</div>
                       </div>
                       
                       <div>
-                        <div className="font-mono">{tarima.itemNumber}</div>
+                        <div className="font-mono">{formatString(tarima.itemNumber)}</div>
                         <div className="text-gray-500 text-xs">Item Number</div>
                       </div>
                       
                       <div>
-                        <div className="font-medium">{tarima.po}</div>
+                        <div className="font-medium">{formatString(tarima.po)}</div>
                         <div className="text-gray-500 text-xs">PO</div>
                       </div>
                       
                       <div>
-                        <div>{tarima.lote}</div>
+                        <div>{formatString(tarima.lote)}</div>
                         <div className="text-gray-500 text-xs">Lote</div>
                       </div>
                       
                       <div>
-                        <div>{tarima.cajas} cajas</div>
-                        <div className="text-gray-500 text-xs">{tarima.cantidad.toLocaleString()} und</div>
+                        <div>{`${formatNumber(tarima.cajas)} cajas`}</div>
+                        <div className="text-gray-500 text-xs">{formatNumberWithUnit(tarima.cantidad, "und")}</div>
                       </div>
                       
                       <div>
-                        <div>{(tarima.pesoBruto / 1000).toFixed(1)}T</div>
+                        <div>
+                          {typeof tarima.pesoBruto === "number"
+                            ? `${(tarima.pesoBruto / 1000).toFixed(1)}T`
+                            : "N/A"}
+                        </div>
                         <div className="text-gray-500 text-xs">Peso Bruto</div>
                       </div>
                     </div>

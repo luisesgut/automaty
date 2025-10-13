@@ -4,22 +4,21 @@ import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
-import { Calendar, Download, Image as ImageIcon, X, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Download, X, FileSpreadsheet, Loader2, Image } from "lucide-react";
 import LoadingSpinner from "@/components/shared/LoadingSpinner";
 import html2canvas from "html2canvas";
 
-// --- Interfaz actualizada SIN palletsAvailable ---
 interface PreviewItem {
   id: number;
   company: string;
-  nextTruckAvailable: string; // Editable
+  nextTruckAvailable: string;
   poNumber: string;
   customerItemNumber: string;
   itemDescription: string;
   quantityAlreadyShipped: string;
   quantityOnFloor: number;
   itemType: string;
-  salesCSRNames: string; // Editable
+  salesCSRNames: string;
   shipDate: string;
 }
 
@@ -29,6 +28,90 @@ interface PreviewModalProps {
   releaseId: number;
   releaseName: string;
 }
+
+const normalizeLot = (value: unknown): string | null => {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized ? normalized : null;
+};
+
+const isNonEmptyString = (value: string | null): value is string => Boolean(value && value.length > 0);
+
+const parseTraceabilityList = (value: unknown): string[] => {
+  if (!value) {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map(normalizeLot)
+      .filter(isNonEmptyString);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map(normalizeLot)
+          .filter(isNonEmptyString);
+      }
+    } catch {
+      return value
+        .split(/[\s,]+/)
+        .map(normalizeLot)
+        .filter(isNonEmptyString);
+    }
+  }
+
+  return [];
+};
+
+const toNumericValue = (value: unknown): number => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.replace(/,/g, "").trim();
+    if (!normalized) {
+      return 0;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  return 0;
+};
+
+const deriveQuantityOnFloor = (item: any, quantityIndex: Map<string, number>): number => {
+  const lotNumbers = parseTraceabilityList(item?.trazabilidades);
+  if (lotNumbers.length > 0) {
+    let matched = false;
+    const totalFromLots = lotNumbers.reduce((acc, lote) => {
+      const quantity = quantityIndex.get(lote);
+      if (typeof quantity === "number" && !Number.isNaN(quantity)) {
+        matched = true;
+        return acc + quantity;
+      }
+      return acc;
+    }, 0);
+
+    if (matched) {
+      return totalFromLots;
+    }
+  }
+
+  const shipped = toNumericValue(item?.quantityAlreadyShipped);
+  if (shipped > 0) {
+    return shipped;
+  }
+
+  return toNumericValue(item?.quantityOnFloor);
+};
 
 export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }: PreviewModalProps) {
   const [loading, setLoading] = useState(false);
@@ -43,30 +126,57 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
     try {
       setLoading(true);
       setError(null);
-      
+
       const response = await fetch(`http://172.16.10.31/api/ReleaseDestiny/releases/${releaseId}`);
       if (!response.ok) throw new Error(`Error al cargar datos: ${response.status}`);
-      
+
       const data = await response.json();
-      
-      // Mapeo actualizado SIN palletsAvailable
+
+      const quantityIndex = new Map<string, number>();
+
+      try {
+        const stockResponse = await fetch("http://172.16.10.31/api/vwStockDestiny");
+        if (stockResponse.ok) {
+          const stockData: Array<Record<string, unknown>> = await stockResponse.json();
+          stockData.forEach((stockItem) => {
+            const loteKey = normalizeLot((stockItem as any).lote);
+            if (!loteKey) {
+              return;
+            }
+
+            const rawQuantity = (stockItem as any).cantidad ?? (stockItem as any).totalUnits;
+            if (rawQuantity === null || rawQuantity === undefined || rawQuantity === "") {
+              return;
+            }
+
+            const numericQuantity = toNumericValue(rawQuantity);
+            if (!Number.isNaN(numericQuantity)) {
+              quantityIndex.set(loteKey, numericQuantity);
+            }
+          });
+        } else {
+          console.warn(`No se pudo obtener el inventario para la vista previa: ${stockResponse.status}`);
+        }
+      } catch (stockError) {
+        console.warn("Error al obtener inventario para vista previa:", stockError);
+      }
+
       const previewItems: PreviewItem[] = data.shippingItems.map((item: any) => ({
         id: item.id,
-        company: item.company || 'BioFlex',
-        // Se autocompleta con la fecha, pero es editable
-        nextTruckAvailable: new Date(item.shipDate || shipDate).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
-        poNumber: item.poNumber || '',
-        customerItemNumber: item.customerItemNumber || '',
-        itemDescription: item.itemDescription || '',
-        quantityAlreadyShipped: item.quantityAlreadyShipped || '0',
-        quantityOnFloor: item.quantityOnFloor || 0,
-        itemType: item.itemType || 'Finished Good',
-        salesCSRNames: item.salesCSRNames || '',
-        shipDate: item.shipDate ? item.shipDate.split('T')[0] : shipDate,
+        company: item.company || "BioFlex",
+        nextTruckAvailable: new Date(item.shipDate || shipDate).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
+        poNumber: item.poNumber || "",
+        customerItemNumber: item.customerItemNumber || "",
+        itemDescription: item.itemDescription || "",
+        quantityAlreadyShipped: item.quantityAlreadyShipped || "0",
+        quantityOnFloor: deriveQuantityOnFloor(item, quantityIndex),
+        itemType: item.itemType || "Finished Good",
+        salesCSRNames: item.salesCSRNames || "",
+        shipDate: item.shipDate ? item.shipDate.split("T")[0] : shipDate,
       }));
-      
+
       setItems(previewItems);
-      
+
     } catch (err) {
       console.error("Error fetching preview data:", err);
       setError(err instanceof Error ? err.message : "Error desconocido");
@@ -82,7 +192,6 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
     }
   }, [isOpen, releaseId]);
 
-  // Función para manejar la edición en la tabla
   const handleCellChange = (itemId: number, field: keyof PreviewItem, value: string) => {
     setItems(prevItems => 
       prevItems.map(item => 
@@ -133,75 +242,101 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
     setDownloadingImage(true);
     
     try {
-      // Obtener el elemento de la tabla
-      const tableElement = tableRef.current.querySelector('table') as HTMLElement;
-      if (!tableElement) {
-        throw new Error('No se encontró la tabla');
-      }
-
-      // Calcular el ancho total necesario
-      const tableWidth = tableElement.scrollWidth;
-      const tableHeight = tableElement.scrollHeight;
-
-      // Crear un contenedor temporal para la captura
+      // Crear un contenedor temporal completo
       const tempContainer = document.createElement('div');
       tempContainer.style.position = 'absolute';
-      tempContainer.style.top = '-9999px';
-      tempContainer.style.left = '-9999px';
-      tempContainer.style.width = `${tableWidth}px`;
-      tempContainer.style.height = `${tableHeight}px`;
-      tempContainer.style.overflow = 'visible';
+      tempContainer.style.top = '-99999px';
+      tempContainer.style.left = '0';
       tempContainer.style.backgroundColor = 'white';
-      tempContainer.style.padding = '16px';
-
-      // Clonar el contenido completo
+      tempContainer.style.padding = '40px';
+      tempContainer.style.width = 'max-content';
+      
+      // Agregar el logo de Bioflex (SVG inline)
+      const logoSvg = `
+        <div style="margin-bottom: 30px; text-align: center;">
+          <svg width="300" height="80" viewBox="0 0 1440 600" xmlns="http://www.w3.org/2000/svg">
+            <text x="120" y="380" font-family="Arial, sans-serif" font-size="280" font-weight="700" fill="#2C4F54">bioflex</text>
+            <text x="120" y="480" font-family="Arial, sans-serif" font-size="60" font-weight="500" fill="#2C4F54">Beyond packaging.</text>
+          </svg>
+        </div>
+      `;
+      
+      tempContainer.innerHTML = logoSvg;
+      
+      // Clonar el contenido de la tabla
       const clonedContent = tableRef.current.cloneNode(true) as HTMLElement;
       
-      // Remover restricciones de overflow en el clon
+      // Eliminar restricciones de overflow
       const clonedTable = clonedContent.querySelector('.overflow-x-auto') as HTMLElement;
       if (clonedTable) {
         clonedTable.style.overflow = 'visible';
-        clonedTable.style.width = 'auto';
+        clonedTable.style.maxWidth = 'none';
+        clonedTable.style.width = 'max-content';
       }
-
-      tempContainer.appendChild(clonedContent);
-      document.body.appendChild(tempContainer);
-
-      // Usar html2canvas en el contenedor temporal
-      const canvas = await html2canvas(tempContainer, {
-        backgroundColor: '#ffffff',
-        scale: 1.5, // Reducir escala para mejor rendimiento
-        logging: false,
-        useCORS: true,
-        width: tableWidth + 32, // +32 por el padding
-        height: tableHeight + 32,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: tableWidth + 32,
-        windowHeight: tableHeight + 32,
-        onclone: (clonedDoc) => {
-          // Asegurar que todos los estilos se apliquen correctamente
-          const clonedElements = clonedDoc.querySelectorAll('*');
-          clonedElements.forEach((el) => {
-            const element = el as HTMLElement;
-            element.style.overflow = 'visible';
-          });
+      
+      // Asegurar que la tabla tenga el ancho completo
+      const table = clonedContent.querySelector('table') as HTMLElement;
+      if (table) {
+        table.style.width = 'max-content';
+        table.style.minWidth = 'auto';
+      }
+      
+      // Reemplazar inputs con divs para evitar cortes
+      const inputs = clonedContent.querySelectorAll('input');
+      inputs.forEach((input) => {
+        const div = document.createElement('div');
+        div.textContent = input.value;
+        div.style.padding = '4px';
+        div.style.textAlign = input.style.textAlign || 'left';
+        div.style.whiteSpace = 'nowrap';
+        div.style.width = 'auto';
+        div.style.minWidth = '100px';
+        div.className = input.className.replace('bg-transparent', '');
+        
+        if (input.parentElement) {
+          input.parentElement.appendChild(div);
+          input.style.display = 'none';
         }
       });
+      
+      tempContainer.appendChild(clonedContent);
+      document.body.appendChild(tempContainer);
+      
+      // Esperar un momento para que se renderice
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Capturar con html2canvas
+      const canvas = await html2canvas(tempContainer, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        logging: false,
+        useCORS: true,
+        allowTaint: true,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: tempContainer.scrollWidth,
+        windowHeight: tempContainer.scrollHeight,
+      });
 
-      // Limpiar el elemento temporal
+      // Limpiar
       document.body.removeChild(tempContainer);
 
       // Descargar la imagen
-      const link = document.createElement('a');
-      link.download = `${releaseName}_preview.png`;
-      link.href = canvas.toDataURL('image/png', 0.9);
-      link.click();
-
-      toast({ 
-        title: "¡Descargado!", 
-        description: "La imagen se ha descargado exitosamente." 
-      });
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.download = `${releaseName}_preview.png`;
+          link.href = url;
+          link.click();
+          URL.revokeObjectURL(url);
+          
+          toast({ 
+            title: "¡Imagen descargada!", 
+            description: "La imagen completa se ha descargado exitosamente con el logo de Bioflex." 
+          });
+        }
+      }, 'image/png', 1.0);
 
     } catch (err) {
       console.error('Error al descargar imagen:', err);
@@ -247,7 +382,7 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
               >
                 {downloadingImage ? 
                   <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : 
-                  <ImageIcon className="w-4 h-4 mr-1" />
+                  <Image className="w-4 h-4 mr-1" />
                 }
                 Descargar Imagen
               </Button>
@@ -295,10 +430,8 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
                   <tbody>
                     {items.map((item) => (
                       <tr key={item.id} className="bg-white">
-                        {/* Columna Company (No editable) */}
                         <td className="border border-gray-400 p-1 whitespace-nowrap">{item.company}</td>
                         
-                        {/* Columna Next Truck Available (Editable) */}
                         <td className="border border-gray-400 p-0 bg-yellow-100">
                           <input 
                             type="text" 
@@ -308,12 +441,10 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
                           />
                         </td>
 
-                        {/* Columna PO (Con fondo verde) */}
                         <td className="border border-gray-400 p-1 text-center bg-green-100 font-bold whitespace-nowrap">
                           {item.poNumber}
                         </td>
                         
-                        {/* Columnas de solo lectura */}
                         <td className="border border-gray-400 p-1 font-mono text-center whitespace-nowrap">
                           {item.customerItemNumber}
                         </td>
@@ -322,17 +453,12 @@ export default function PreviewModal({ isOpen, onClose, releaseId, releaseName }
                           {parseInt(item.quantityAlreadyShipped).toLocaleString()}
                         </td>
                         
-                        {/* Columna Quantity on Floor (Con fondo azul) */}
                         <td className="border border-gray-400 p-1 text-center bg-blue-100 whitespace-nowrap">
                           {item.quantityOnFloor.toLocaleString()}
                         </td>
                         
-                        {/* COLUMNA PALLETS AVAILABLE ELIMINADA */}
-                        
-                        {/* Columna Item Type (No editable) */}
                         <td className="border border-gray-400 p-1 whitespace-nowrap">{item.itemType}</td>
 
-                        {/* Columna Sales/CSR (Editable) */}
                         <td className="border border-gray-400 p-0 bg-yellow-100">
                            <input 
                              type="text" 

@@ -271,6 +271,7 @@ const TraceabilityModal = ({
   const [currentLotes, setCurrentLotes] = useState<string[]>([]);
   const [loteDetails, setLoteDetails] = useState<Map<string, TrazabilidadDetail>>(new Map());
   const [availableStock, setAvailableStock] = useState<StockItem[]>([]);
+  const [destinationMap, setDestinationMap] = useState<Map<string, string>>(new Map());
 
   const fetchData = async () => {
     setLoading(true);
@@ -305,6 +306,27 @@ const TraceabilityModal = ({
       });
       setLoteDetails(detailsMap);
 
+      const initialDestinations = new Map<string, string>();
+      if (Array.isArray(item.destinations) && item.destinations.length > 0) {
+        item.destinations.forEach(dest => {
+          const key = dest?.trazabilityIdentifier?.trim();
+          if (!key) {
+            return;
+          }
+          initialDestinations.set(key, dest.destino ?? "");
+        });
+      }
+
+      const fallbackDestino = typeof item.destino === "string" ? item.destino.trim() : "";
+      lotesActuales.forEach(loteNum => {
+        if (initialDestinations.has(loteNum)) {
+          return;
+        }
+        initialDestinations.set(loteNum, fallbackDestino);
+      });
+
+      setDestinationMap(initialDestinations);
+
       const stockParaEsteProducto = allStock.filter(stockItem => 
         stockItem.itemNumber === item.customerItemNumber &&
         stockItem.claveProducto === item.claveProducto &&
@@ -326,7 +348,14 @@ const TraceabilityModal = ({
     }
   }, [isOpen, item]);
 
-  const recalculateAndUpdate = (updatedLotes: string[], allDetails: Map<string, TrazabilidadDetail>) => {
+  const recalculateAndUpdate = (
+    updatedLotes: string[],
+    allDetails: Map<string, TrazabilidadDetail>,
+    options?: {
+      destinationOverride?: Map<string, string>;
+      closeModal?: boolean;
+    }
+  ) => {
     let totalPallets = updatedLotes.length;
     let totalGrossWeight = 0;
     let totalNetWeight = 0;
@@ -343,6 +372,16 @@ const TraceabilityModal = ({
       }
     });
 
+    const mapToUse = options?.destinationOverride ?? destinationMap;
+    const destinationAssignments = updatedLotes.map(loteNum => {
+      const currentDestino = (mapToUse.get(loteNum) ?? "").trim();
+      return {
+        trazabilityIdentifier: loteNum,
+        destino: currentDestino,
+        quantity: 0,
+      };
+    });
+
     const recalculatedItem: ShippingItem = {
       ...item,
       trazabilidades: JSON.stringify(updatedLotes),
@@ -351,10 +390,16 @@ const TraceabilityModal = ({
       netWeight: totalNetWeight,
       casesPerPallet: totalPallets > 0 ? Math.round(totalCases / totalPallets) : 0,
       quantityAlreadyShipped: String(totalQuantity),
+      destinations: destinationAssignments,
+      destino: destinationAssignments.length === 1 ? destinationAssignments[0].destino : item.destino,
     };
 
     onUpdate(recalculatedItem);
-    onClose();
+    setDestinationMap(new Map(mapToUse));
+
+    if (options?.closeModal) {
+      onClose();
+    }
   };
 
   const handleRemoveLote = async (loteToRemove: string) => {
@@ -393,6 +438,10 @@ const TraceabilityModal = ({
 
       // Actualizar el estado local
       const updatedLotes = currentLotes.filter(l => l !== loteToRemove);
+      const updatedDetails = new Map(loteDetails);
+      updatedDetails.delete(loteToRemove);
+      const updatedDestinations = new Map(destinationMap);
+      updatedDestinations.delete(loteToRemove);
       
       // Si no quedan lotes, eliminar el item completo del servidor
       if (updatedLotes.length === 0) {
@@ -433,13 +482,17 @@ const TraceabilityModal = ({
             variant: "destructive",
           });
         }
-        
+        setCurrentLotes(updatedLotes);
+        setLoteDetails(updatedDetails);
+        setDestinationMap(updatedDestinations);
         onClose();
         return;
       }
 
       // Recalcular y actualizar normalmente si aún quedan lotes
-      recalculateAndUpdate(updatedLotes, loteDetails);
+      setCurrentLotes(updatedLotes);
+      setLoteDetails(updatedDetails);
+      recalculateAndUpdate(updatedLotes, updatedDetails, { destinationOverride: updatedDestinations });
       
       toast({
         title: "Lote liberado",
@@ -498,8 +551,13 @@ const TraceabilityModal = ({
         claveProducto: "",
         itemNumber: ""
       });
-      
-      recalculateAndUpdate(updatedLotes, updatedDetails);
+      const fallbackDestino = typeof item.destino === "string" ? item.destino.trim() : "";
+      const updatedDestinations = new Map(destinationMap);
+      updatedDestinations.set(loteToAdd.lote, fallbackDestino);
+
+      setCurrentLotes(updatedLotes);
+      setLoteDetails(updatedDetails);
+      recalculateAndUpdate(updatedLotes, updatedDetails, { destinationOverride: updatedDestinations });
       
       toast({
         title: "Lote agregado",
@@ -515,6 +573,13 @@ const TraceabilityModal = ({
         variant: "destructive",
       });
     }
+  };
+
+  const handleDestinationChange = (lote: string, newDestino: string) => {
+    const updatedDestinations = new Map(destinationMap);
+    updatedDestinations.set(lote, newDestino.trim());
+    setDestinationMap(updatedDestinations);
+    recalculateAndUpdate(currentLotes, loteDetails, { destinationOverride: updatedDestinations });
   };
 
   return (
@@ -534,6 +599,7 @@ const TraceabilityModal = ({
               <div className="overflow-y-auto p-3 space-y-3">
   {currentLotes.length > 0 ? currentLotes.map(lote => {
     const loteDetail = loteDetails.get(lote);
+    const destinationValue = destinationMap.get(lote) ?? "";
     return (
       <div key={lote} className="bg-gradient-to-r from-slate-50 to-white dark:from-slate-700 dark:to-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
         <div className="flex justify-between items-center mb-2">
@@ -577,10 +643,24 @@ const TraceabilityModal = ({
     </div>
   </>
 )}
+        <div className="mt-3">
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block mb-1">Destino</label>
+          <Input
+            list="destino-suggestions"
+            value={destinationValue}
+            onChange={(e) => handleDestinationChange(lote, e.target.value)}
+            placeholder="Selecciona o escribe un destino"
+          />
+        </div>
       </div>
     );
   }) : <p className="text-sm text-slate-500 text-center mt-4">No hay trazabilidades asignadas.</p>}
 </div>
+              <datalist id="destino-suggestions">
+                {destinoOptions.map(option => (
+                  <option key={option} value={option} />
+                ))}
+              </datalist>
             </div>
             <div className="flex flex-col overflow-hidden border rounded-lg">
               <h3 className="p-3 font-semibold border-b bg-slate-50 dark:bg-slate-700">Disponibles en Stock ({availableStock.length})</h3>
@@ -676,6 +756,11 @@ export default function EditableShippingTable({
   const [selectedTrazabilidadesForDetails, setSelectedTrazabilidadesForDetails] = useState<string | null>(null);
   const [selectedItemDescriptionForDetails, setSelectedItemDescriptionForDetails] = useState<string>("");
 
+  const activeTraceabilityItem = currentItemForTraceability
+    ? items.find(item => item.id === currentItemForTraceability.id) ?? currentItemForTraceability
+    : null;
+
+
   // Lista de campos editables (del segundo componente)
   const editableFields: Array<{
     key: keyof ShippingItem;
@@ -708,8 +793,7 @@ export default function EditableShippingTable({
     { key: 'idReleaseCliente', label: 'ID Release Cliente', type: 'text', width: 'w-40', editable: true, category: 'tracking' },
     { key: 'itemType', label: 'Tipo Item', type: 'select', width: 'w-32', editable: true, category: 'tracking' },
     { key: 'salesCSRNames', label: 'Sales CSR', type: 'text', width: 'w-48', editable: true, category: 'tracking' },
-    { key: 'trazabilidades', label: 'Trazabilidades', type: 'modal', width: 'w-64', editable: true, category: 'tracking' }, // Tipo 'modal' para usar el modal inteligente
-    { key: 'destino', label: 'Destino', type: 'select', width: 'w-40', editable: true, icon: MapPin, category: 'tracking' },
+    { key: 'trazabilidades', label: 'Trazabilidades & Destinos', type: 'modal', width: 'w-64', editable: true, category: 'tracking' }, // Tipo 'modal' para usar el modal inteligente
     { key: 'modifiedBy', label: 'Modificado por', type: 'select', width: 'w-40', editable: true, icon: User, category: 'info' },
     
     // Información financiera (solo lectura)
@@ -832,26 +916,49 @@ const handleFieldChange = (field: keyof ShippingItem, value: any) => {
 const renderEditableCell = (item: ShippingItem, field: any) => {
   const isRowBeingEdited = editingRowId === item.id;
 const currentValue = isRowBeingEdited ? editingRowData?.[field.key as keyof ShippingItem] : item[field.key as keyof ShippingItem];  
-  if (field.type === 'modal' && field.key === 'trazabilidades') {
-    // Mantener el comportamiento actual para trazabilidades
-    let count = 0;
-    try { count = JSON.parse(item.trazabilidades || "[]").length; } catch {}
-    return (
-      <div className="flex items-center justify-center space-x-2">
-        <Button 
-          onClick={() => handleOpenTraceabilityModal(item)} 
-          variant="outline" 
-          size="sm" 
-          disabled={isReadOnly}
-          className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 hover:from-blue-600 hover:to-purple-700 shadow-sm"
-        >
-          <Edit3 className="w-4 h-4 mr-2" />
-          Gestionar ({count})
-        </Button>
-       
+  if (field.type === 'modal') {
+    if (field.key === 'trazabilidades') {
+      let totalTrazas = 0;
+      try { totalTrazas = JSON.parse(item.trazabilidades || "[]").length; } catch { totalTrazas = 0; }
+      const destinationList = Array.isArray(item.destinations) ? item.destinations : [];
+      const totalDestinos = destinationList.length;
+      const total = totalTrazas || totalDestinos;
+      const assignedDestinations = destinationList.filter(dest => dest.destino && dest.destino.trim().length > 0);
+      const assignedCount = assignedDestinations.length > 0
+        ? assignedDestinations.length
+        : (item.destino ? total : 0);
+      const summaryText = total === 0
+        ? "Gestionar trazabilidades"
+        : `Gestionar destinos (${assignedCount}/${total})`;
 
-      </div>
-    );
+      return (
+        <div className="flex flex-col items-center justify-center space-y-1">
+          <Button 
+            onClick={() => handleOpenTraceabilityModal(item)} 
+            variant="outline" 
+            size="sm" 
+            disabled={isReadOnly}
+            className="bg-gradient-to-r from-blue-500 to-purple-600 text-white border-0 hover:from-blue-600 hover:to-purple-700 shadow-sm"
+          >
+            <MapPin className="w-4 h-4 mr-2" />
+            {summaryText}
+          </Button>
+          {total > 0 && (
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+              {(assignedDestinations.length > 0 ? assignedDestinations : destinationList)
+                .map(dest => (dest.destino ?? "").trim())
+                .filter(name => name.length > 0)
+                .slice(0, 2)
+                .join(", ") || "Sin destinos asignados"}
+              {(assignedDestinations.length > 0 ? assignedDestinations : destinationList)
+                .map(dest => (dest.destino ?? "").trim())
+                .filter(name => name.length > 0)
+                .length > 2 && "…"}
+            </span>
+          )}
+        </div>
+      );
+    }
   }
   
   if (!field.editable) {
@@ -1087,7 +1194,7 @@ const renderRowActions = (item: ShippingItem) => {
         <table className="w-full">
         <thead>
   <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-    <th className="sticky left-0 z-10 bg-slate-50 dark:bg-slate-800 px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-16 border-r border-slate-200 dark:border-slate-700">
+    <th className="sticky left-0 top-0 z-30 bg-slate-50 dark:bg-slate-800 px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-16 border-r border-slate-200 dark:border-slate-700">
       <div className="flex items-center space-x-1">
         <Package className="h-3 w-3" />
         <span>ID</span>
@@ -1096,7 +1203,7 @@ const renderRowActions = (item: ShippingItem) => {
     {editableFields.map((field) => (
       <th
         key={field.key}
-        className={`px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider ${field.width} border-r border-slate-200 dark:border-slate-700 last:border-r-0 ${getCategoryColor(field.category)}`}
+        className={`sticky top-0 z-20 px-4 py-4 text-left text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider ${field.width} border-r border-slate-200 dark:border-slate-700 last:border-r-0 ${getCategoryColor(field.category)}`}
       >
         <div className="flex items-center space-x-2">
           {field.editable && (
@@ -1111,7 +1218,7 @@ const renderRowActions = (item: ShippingItem) => {
       </th>
     ))}
     {/* MOVER AQUÍ EL TH DE ACCIONES */}
-    <th className="px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-32 border-r border-slate-200 dark:border-slate-700">
+    <th className="sticky top-0 z-20 px-4 py-4 text-center text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider w-32 border-r border-slate-200 dark:border-slate-700">
       <div className="flex items-center justify-center space-x-1">
         <Edit3 className="h-3 w-3" />
         <span>Acciones</span>
@@ -1219,11 +1326,11 @@ const renderRowActions = (item: ShippingItem) => {
           </div>
         </div>
       </div>
-      {currentItemForTraceability && (
+      {activeTraceabilityItem && (
         <TraceabilityModal
           isOpen={isTraceabilityModalOpen}
           onClose={() => setIsTraceabilityModalOpen(false)}
-          item={currentItemForTraceability}
+          item={activeTraceabilityItem}
           onUpdate={onUpdateItem}
           onItemDeleted={onItemDeleted}
         />

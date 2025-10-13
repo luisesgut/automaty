@@ -1,5 +1,5 @@
 // components/FilteredResultItemDisplay.tsx
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, Package, AlertCircle, CheckCircle, Search } from "lucide-react";
 import { ApiFilterResponseItem, Tarima } from "@/types";
+import { formatNumber, formatNumberWithUnit, formatString, coerceBoolean } from "@/utils/formatters";
 
 interface FilteredResultItemDisplayProps {
     filterResult: ApiFilterResponseItem;
@@ -22,6 +23,31 @@ export default function FilteredResultItemDisplay({
     const [isExpanded, setIsExpanded] = useState(filterResult.totalEncontrados > 0);
 
     const { filtroSolicitado, totalEncontrados, datos } = filterResult;
+
+    const aggregatedStats = useMemo(() => {
+        let totalCajas = 0;
+        let totalCantidad = 0;
+        let totalPesoBruto = 0;
+        const uniqueLotes = new Set<string>();
+
+        datos.forEach((tarima) => {
+            totalCajas += tarima.cajas ?? 0;
+            totalCantidad += tarima.cantidad ?? 0;
+            totalPesoBruto += tarima.pesoBruto ?? 0;
+
+            const lote = tarima.lote?.trim();
+            if (lote) {
+                uniqueLotes.add(lote.toLowerCase());
+            }
+        });
+
+        return {
+            totalCajas,
+            totalCantidad,
+            totalPesoBruto,
+            uniqueLotesCount: uniqueLotes.size
+        };
+    }, [datos]);
 
     const isTarimaSelected = (prodEtiquetaRFIDId: number) => {
         return selectedTarimas.some((tarima) => tarima.prodEtiquetaRFIDId === prodEtiquetaRFIDId);
@@ -128,25 +154,25 @@ export default function FilteredResultItemDisplay({
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-white dark:bg-slate-800 rounded-lg border border-green-200 dark:border-green-700">
                                 <div className="text-center">
                                     <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                                        {datos.reduce((sum, t) => sum + t.cajas, 0)}
+                                        {formatNumber(aggregatedStats.totalCajas)}
                                     </p>
                                     <p className="text-xs text-muted-foreground">Total Cajas</p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                        {datos.reduce((sum, t) => sum + t.cantidad, 0).toLocaleString()}
+                                        {formatNumber(aggregatedStats.totalCantidad)}
                                     </p>
                                     <p className="text-xs text-muted-foreground">Cantidad</p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                                        {datos.reduce((sum, t) => sum + t.pesoBruto, 0).toLocaleString()}
+                                        {formatNumberWithUnit(aggregatedStats.totalPesoBruto, "kg")}
                                     </p>
                                     <p className="text-xs text-muted-foreground">Peso Bruto (kg)</p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                                        {new Set(datos.map(t => t.lote)).size}
+                                        {aggregatedStats.uniqueLotesCount}
                                     </p>
                                     <p className="text-xs text-muted-foreground">Lotes Únicos</p>
                                 </div>
@@ -183,62 +209,65 @@ export default function FilteredResultItemDisplay({
                                                             <Checkbox
                                                                 checked={isSelected}
                                                                 onCheckedChange={() => onSelectTarima(tarima)}
-                                                                aria-label={`Seleccionar tarima ${tarima.nombreProducto}`}
+                                                                aria-label={`Seleccionar tarima ${tarima.nombreProducto ?? "desconocida"}`}
                                                             />
                                                         </TableCell>
 
                                                         <TableCell className="font-medium">
                                                             <div className="space-y-1">
-                                                                <div className="max-w-[200px] truncate font-semibold text-green-800 dark:text-green-200" title={tarima.nombreProducto}>
-                                                                    {tarima.nombreProducto}
+                                                                <div
+                                                                    className="max-w-[200px] truncate font-semibold text-green-800 dark:text-green-200"
+                                                                    title={tarima.nombreProducto ?? undefined}
+                                                                >
+                                                                    {formatString(tarima.nombreProducto)}
                                                                 </div>
                                                                 <div className="text-xs text-muted-foreground bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
-                                                                    {tarima.claveProducto}
+                                                                    {formatString(tarima.claveProducto)}
                                                                 </div>
                                                             </div>
                                                         </TableCell>
 
                                                         <TableCell>
                                                             <span className="bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded text-sm font-medium">
-                                                                {tarima.lote}
+                                                                {formatString(tarima.lote)}
                                                             </span>
                                                         </TableCell>
 
                                                         <TableCell className="text-right">
                                                             <div className="text-right">
                                                                 <span className="font-semibold text-lg block">
-                                                                    {tarima.cantidad.toLocaleString()}
+                                                                    {formatNumber(tarima.cantidad)}
                                                                 </span>
-                                                                <div className="text-xs text-muted-foreground">{tarima.unidad}</div>
+                                                                <div className="text-xs text-muted-foreground">{formatString(tarima.unidad)}</div>
                                                             </div>
                                                         </TableCell>
 
                                                         <TableCell className="text-right">
-                                                            <span className="font-semibold">{tarima.cajas}</span>
+                                                            <span className="font-semibold">{formatNumber(tarima.cajas)}</span>
                                                         </TableCell>
 
                                                         <TableCell className="text-right">
-                                                            <span className="text-sm font-medium">{tarima.pesoNeto.toLocaleString()} kg</span>
+                                                            <span className="text-sm font-medium">{formatNumberWithUnit(tarima.pesoNeto, "kg")}</span>
                                                         </TableCell>
 
                                                         <TableCell className="text-right">
-                                                            <span className="text-sm font-medium">{tarima.pesoBruto.toLocaleString()} kg</span>
+                                                            <span className="text-sm font-medium">{formatNumberWithUnit(tarima.pesoBruto, "kg")}</span>
                                                         </TableCell>
 
                                                         <TableCell>
                                                             <Badge
-                                                                variant={tarima.asignadoAentrega ? "default" : "outline"}
+                                                                variant={coerceBoolean(tarima.asignadoAentrega) ? "default" : "outline"}
                                                                 className={`whitespace-nowrap text-xs h-fit py-1 px-2
-                                        ${tarima.asignadoAentrega
+                                        ${coerceBoolean(tarima.asignadoAentrega)
                                                                         ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30"
                                                                         : "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30"}`}
                                                             >
-                                                                {tarima.asignadoAentrega ? (
+                                                                {coerceBoolean(tarima.asignadoAentrega) ? (
                                                                     <CheckCircle className="h-3 w-3 mr-1" />
                                                                 ) : (
                                                                     <AlertCircle className="h-3 w-3 mr-1" />
                                                                 )}
-                                                                {tarima.asignadoAentrega ? "Asignado" : "Disponible"}
+                                                                {coerceBoolean(tarima.asignadoAentrega) ? "Asignado" : "Disponible"}
                                                             </Badge>
                                                         </TableCell>
                                                     </TableRow>

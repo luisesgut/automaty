@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 220" role="img" aria-labelledby="title desc">
+  <title id="title">Bioflex logo</title>
+  <desc id="desc">Bioflex. Beyond packaging.</desc>
+  <style>
+    .brand {
+      fill: #123f46;
+      font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+    }
+    .tagline {
+      fill: #123f46;
+      font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      font-size: 46px;
+      font-weight: 600;
+    }
+  </style>
+  <rect width="720" height="220" fill="transparent"/>
+  <text class="brand" font-size="160" x="0" y="135">bioflex</text>
+  <text class="tagline" x="4" y="195">Beyond packaging.</text>
+</svg>
