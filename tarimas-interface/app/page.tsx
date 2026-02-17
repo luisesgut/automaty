@@ -32,6 +32,7 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 // Tipos
 type ActiveTab = "tarimas" | "excel" | "releases";
 type ProcessingStep = "idle" | "updating-status" | "creating-release" | "completed" | "error";
+const INT32_MAX = 2147483647;
 
 export default function Home() {
   useGlobalErrorHandler();
@@ -49,7 +50,17 @@ export default function Home() {
   const [showAllTarimas, setShowAllTarimas] = useState(false);
 
   // Hooks personalizados
-  const { tarimas, loading, error, fetchTarimas, updateTarimasStatus } = useTarimas();
+  const {
+    tarimas,
+    loading,
+    error,
+    fetchTarimas,
+    updateTarimasStatus,
+    dataSource,
+    excelImportReport,
+    isImportingExcel,
+    importTarimasFromExcel
+  } = useTarimas();
   const {
     selectedTarimas,
     handleSelectTarima,
@@ -127,7 +138,50 @@ export default function Home() {
 
     // Parte 1: Actualizar el estado de las tarimas
     try {
-      const rfidIds = tarimasAProcesar.map(tarima => tarima.prodEtiquetaRFIDId);
+      const resolveRfidId = async (trazabilidad: string) => {
+        const response = await fetch(
+          `http://172.16.10.31/api/Socket/id-por-trazabilidad/${encodeURIComponent(trazabilidad)}`,
+          {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          const errorMsg = await response.text();
+          throw new Error(`No se pudo resolver RFID para trazabilidad ${trazabilidad}: ${response.status}. ${errorMsg}`);
+        }
+
+        const data = await response.json();
+        const id = Number(data?.id);
+
+        if (!Number.isInteger(id) || id <= 0 || id > INT32_MAX) {
+          throw new Error(`RFID inválido para trazabilidad ${trazabilidad}.`);
+        }
+
+        return id;
+      };
+
+      const rfidIds = await Promise.all(
+        tarimasAProcesar.map(async (tarima) => {
+          const currentId = tarima.prodEtiquetaRFIDId;
+          const shouldResolveByTrazabilidad = dataSource === "excel";
+
+          if (!shouldResolveByTrazabilidad && Number.isInteger(currentId) && currentId > 0 && currentId <= INT32_MAX) {
+            return currentId;
+          }
+
+          const trazabilidad = (tarima.trazabilidad ?? tarima.lote ?? "").trim();
+          if (!trazabilidad) {
+            throw new Error("La tarima no tiene trazabilidad para consultar el RFID.");
+          }
+
+          return resolveRfidId(trazabilidad);
+        })
+      );
+
       const urlActualizacionEstado = "http://172.16.10.31/api/LabelDestiny/UpdateProdExtrasDestinyStatus?marcado=true";
 
       const responseEstado = await fetch(urlActualizacionEstado, {
@@ -373,7 +427,9 @@ export default function Home() {
             </p>
           </div>
           <button
-            onClick={fetchTarimas}
+            onClick={() => {
+              void fetchTarimas();
+            }}
             className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 transition-colors"
           >
             Reintentar
@@ -420,6 +476,13 @@ export default function Home() {
             onToggleShowAll={handleToggleShowAll}
             totalTarimasCount={tarimas.length}
             filteredTarimasCount={tarimasFiltradas.length}
+            dataSource={dataSource}
+            excelImportReport={excelImportReport}
+            isImportingExcel={isImportingExcel}
+            onImportExcel={importTarimasFromExcel}
+            onRestoreEndpoint={async () => {
+              await fetchTarimas();
+            }}
           />
         )}
 

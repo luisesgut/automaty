@@ -18,6 +18,19 @@ export interface Tarima {
     totalUnits: number | null;
     uom: string | null;
     asignadoAentrega: boolean | null;
+    trazabilidad?: string | null;
+    loteCliente?: string | null;
+}
+
+export type TarimasDataSource = "endpoint" | "excel";
+
+export interface TarimasExcelImportReport {
+    fileName: string;
+    totalRows: number;
+    importedRows: number;
+    invalidRows: number;
+    errors: string[];
+    importedAt: string;
 }
 
 export interface ParsedExcelItem {

@@ -1,10 +1,16 @@
 // components/tarimas/TarimasTab.tsx
-import { useMemo, useState } from "react";
-import { Tarima } from "@/types";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import { Tarima, TarimasDataSource, TarimasExcelImportReport } from "@/types";
 import TarimasSearch, { TarimaFilterMode } from "./TarimasSearch";
 import SelectedTarimasPreview from "./SelectedTarimasPreview";
 import TarimasTable from "./TarimasTable";
 import { TarimasStats } from "@/types";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { toast } from "@/components/ui/use-toast";
+import { FileSpreadsheet, Database, Upload, RotateCcw } from "lucide-react";
 
 type HighlightField = "nombreProducto" | "lote" | "itemNumber" | "claveProducto" | "po";
 type TarimaHighlightMap = Record<number, Partial<Record<HighlightField, string[]>>>;
@@ -39,6 +45,11 @@ interface TarimasTabProps {
   onToggleShowAll: (checked: boolean) => void;
   totalTarimasCount: number;
   filteredTarimasCount: number;
+  dataSource: TarimasDataSource;
+  excelImportReport: TarimasExcelImportReport | null;
+  isImportingExcel: boolean;
+  onImportExcel: (file: File) => Promise<TarimasExcelImportReport>;
+  onRestoreEndpoint: () => Promise<void>;
 }
 
 export default function TarimasTab({
@@ -56,12 +67,52 @@ export default function TarimasTab({
   showAllTarimas,
   onToggleShowAll,
   totalTarimasCount,
-  filteredTarimasCount
+  filteredTarimasCount,
+  dataSource,
+  excelImportReport,
+  isImportingExcel,
+  onImportExcel,
+  onRestoreEndpoint
 }: TarimasTabProps) {
   const [filterMode, setFilterMode] = useState<TarimaFilterMode>("general");
   const [generalQuery, setGeneralQuery] = useState("");
   const [bulkQuery, setBulkQuery] = useState("");
   const [showPreview, setShowPreview] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleExcelUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const report = await onImportExcel(file);
+      toast({
+        title: "Excel importado",
+        description: `${report.importedRows} de ${report.totalRows} filas cargadas desde ${report.fileName}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Error al importar Excel",
+        description: err instanceof Error ? err.message : "No se pudo procesar el archivo.",
+        variant: "destructive",
+      });
+    } finally {
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
+  };
+
+  const handleRestoreEndpoint = async () => {
+    await onRestoreEndpoint();
+    toast({
+      title: "Fuente restaurada",
+      description: "Se volvió a cargar el inventario desde el endpoint.",
+    });
+  };
 
   const { bulkValues, bulkValuesLower } = useMemo(() => {
     const values = bulkQuery
@@ -201,6 +252,82 @@ export default function TarimasTab({
 
   return (
     <div className="space-y-6">
+      <Card className="shadow-md dark:bg-slate-800 dark:border-slate-700">
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-base font-semibold">Fuente de inventario</p>
+              <div className="flex items-center gap-2">
+                <Badge variant={dataSource === "excel" ? "default" : "outline"}>
+                  {dataSource === "excel" ? (
+                    <>
+                      <FileSpreadsheet className="h-3.5 w-3.5 mr-1" />
+                      Excel
+                    </>
+                  ) : (
+                    <>
+                      <Database className="h-3.5 w-3.5 mr-1" />
+                      Endpoint
+                    </>
+                  )}
+                </Badge>
+                {excelImportReport && (
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {excelImportReport.importedRows}/{excelImportReport.totalRows} filas válidas
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={handleExcelUpload}
+              />
+
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImportingExcel}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                {isImportingExcel ? "Importando..." : "Subir Excel"}
+              </Button>
+
+              {dataSource === "excel" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleRestoreEndpoint}
+                  disabled={isImportingExcel || loading}
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Usar endpoint
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {excelImportReport && excelImportReport.invalidRows > 0 && (
+            <Alert variant="default" className="border-amber-200 bg-amber-50 dark:bg-amber-500/10">
+              <AlertTitle>Filas omitidas durante la importación</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">
+                  {excelImportReport.invalidRows} fila(s) no se cargaron por validación.
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-300">
+                  {excelImportReport.errors.slice(0, 3).join(" ")}
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Sección de búsqueda y filtros - ACTUALIZADA */}
       <TarimasSearch
         filterMode={filterMode}

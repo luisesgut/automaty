@@ -140,33 +140,6 @@ const highlightText = (
     return nodes;
 };
 
-const dedupeTarimasByLote = (tarimas: Tarima[]): Tarima[] => {
-    const seen = new Set<string>();
-
-    return tarimas.filter((tarima) => {
-        const loteValue = tarima.lote;
-        if (loteValue === null || loteValue === undefined) {
-            return true;
-        }
-
-        const normalizedLote = typeof loteValue === "number"
-            ? String(loteValue)
-            : loteValue.trim().toLowerCase();
-
-        if (!normalizedLote) {
-            return true;
-        }
-
-        if (seen.has(normalizedLote)) {
-            return false;
-        }
-
-        seen.add(normalizedLote);
-        return true;
-    });
-};
-
-
 interface TarimasTableProps {
     tarimas: Tarima[];
     filteredTarimas: Tarima[];
@@ -199,11 +172,8 @@ export default function TarimasTable({
     showAllTarimas,
     highlightMap
 }: TarimasTableProps) {
-    const uniqueTarimas = useMemo(() => dedupeTarimasByLote(tarimas), [tarimas]);
-    const uniqueFilteredTarimas = useMemo(() => dedupeTarimasByLote(filteredTarimas), [filteredTarimas]);
-
-    const totalTarimasCount = uniqueTarimas.length;
-    const totalFilteredTarimasCount = uniqueFilteredTarimas.length;
+    const totalTarimasCount = tarimas.length;
+    const totalFilteredTarimasCount = filteredTarimas.length;
 
     const selectedIds = useMemo(
         () => new Set(selectedTarimas.map((tarima) => tarima.prodEtiquetaRFIDId)),
@@ -356,7 +326,7 @@ export default function TarimasTable({
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        uniqueFilteredTarimas.map((tarima, index) => {
+                                        filteredTarimas.map((tarima, index) => {
                                             const isSelected = isTarimaSelected(tarima.prodEtiquetaRFIDId);
                                             const canSelect = canSelectTarima(tarima);
                                             const isAssigned = coerceBoolean(tarima.asignadoAentrega);
