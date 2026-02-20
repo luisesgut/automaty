@@ -3,6 +3,9 @@ name: Deploy Next.js Dashboard to IIS
 on:
   push:
     branches: [ "main" ] # Verifica si tu rama principal es 'main' o 'master'
+    defaults:
+      run:
+        working-directory: ./tarimas-interface
 
 jobs:
   deploy:
