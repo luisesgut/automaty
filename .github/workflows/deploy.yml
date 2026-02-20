@@ -7,7 +7,6 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted 
-    # Mantenemos el 'defaults' aquí para que npm encuentre el package.json
     defaults:
       run:
         working-directory: ./tarimas-interface
