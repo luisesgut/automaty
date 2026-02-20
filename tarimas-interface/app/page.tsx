@@ -33,6 +33,7 @@ import LoadingSpinner from "@/components/shared/LoadingSpinner";
 type ActiveTab = "tarimas" | "excel" | "releases";
 type ProcessingStep = "idle" | "updating-status" | "creating-release" | "completed" | "error";
 const INT32_MAX = 2147483647;
+const SHOW_EXCEL_PREVIEW_TAB = false;
 
 export default function Home() {
   useGlobalErrorHandler();
@@ -456,6 +457,7 @@ export default function Home() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         selectedCount={selectedTarimas.length}
+        showExcelTab={SHOW_EXCEL_PREVIEW_TAB}
       />
 
       {/* Main Content */}
@@ -486,7 +488,7 @@ export default function Home() {
           />
         )}
 
-        {activeTab === "excel" && (
+        {SHOW_EXCEL_PREVIEW_TAB && activeTab === "excel" && (
           <ExcelTab
             selectedTarimas={selectedTarimas}
             onSelectTarima={handleSelectTarima}

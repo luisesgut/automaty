@@ -16,10 +16,7 @@ type HighlightField = "nombreProducto" | "lote" | "itemNumber" | "claveProducto"
 type TarimaHighlightMap = Record<number, Partial<Record<HighlightField, string[]>>>;
 
 const filterModeToField: Record<Exclude<TarimaFilterMode, "general">, HighlightField> = {
-  po: "po",
-  lote: "lote",
-  producto: "nombreProducto",
-  customerItem: "itemNumber"
+  po: "po"
 };
 
 const normalizeTarimaValue = (value: unknown) => {
@@ -110,7 +107,7 @@ export default function TarimasTab({
     await onRestoreEndpoint();
     toast({
       title: "Fuente restaurada",
-      description: "Se volvió a cargar el inventario desde el endpoint.",
+      description: "Se volvió a cargar el inventario desde SAP.",
     });
   };
 
@@ -193,7 +190,11 @@ export default function TarimasTab({
       const matchedTerms: string[] = [];
 
       bulkValuesLower.forEach((valueLower, index) => {
-        if (targetValue.includes(valueLower)) {
+        const isMatch = filterMode === "po"
+          ? targetValue === valueLower
+          : targetValue.includes(valueLower);
+
+        if (isMatch) {
           matchedTerms.push(bulkValues[index]);
         }
       });
@@ -230,10 +231,7 @@ export default function TarimasTab({
 
     const modeLabel: Record<TarimaFilterMode, string> = {
       general: "",
-      po: "PO",
-      lote: "Lote",
-      producto: "Producto",
-      customerItem: "Customer Item"
+      po: "PO"
     };
 
     return remainingCount > 0
@@ -267,7 +265,7 @@ export default function TarimasTab({
                   ) : (
                     <>
                       <Database className="h-3.5 w-3.5 mr-1" />
-                      Endpoint
+                      SAP
                     </>
                   )}
                 </Badge>
@@ -306,7 +304,7 @@ export default function TarimasTab({
                   disabled={isImportingExcel || loading}
                 >
                   <RotateCcw className="h-4 w-4 mr-2" />
-                  Usar endpoint
+                  Usar SAP
                 </Button>
               )}
             </div>

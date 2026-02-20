@@ -18,14 +18,11 @@ import {
     EyeOff,
     Filter,
     Package,
-    ListFilter,
-    Hash,
-    PackageSearch,
-    Tag
+    ListFilter
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-export type TarimaFilterMode = "general" | "po" | "lote" | "producto" | "customerItem";
+export type TarimaFilterMode = "general" | "po";
 
 const FILTER_MODE_OPTIONS: Array<{
     value: TarimaFilterMode;
@@ -50,30 +47,6 @@ const FILTER_MODE_OPTIONS: Array<{
         placeholder: "PO12345, PO67890",
         helper: "Ingresa uno o varios PO, separándolos con comas, saltos de línea o tabulaciones.",
         icon: ListFilter
-    },
-    {
-        value: "lote",
-        label: "Lote",
-        description: "Encuentra tarimas por número de lote.",
-        placeholder: "Lote-001, Lote-002",
-        helper: "Escribe los lotes que necesitas consultar, uno por línea o separados por comas.",
-        icon: Hash
-    },
-    {
-        value: "producto",
-        label: "Producto",
-        description: "Filtra por nombre comercial del producto.",
-        placeholder: "Nombre de producto",
-        helper: "Puedes pegar una lista de nombres de producto, cuidaremos las coincidencias parciales.",
-        icon: PackageSearch
-    },
-    {
-        value: "customerItem",
-        label: "Customer Item",
-        description: "Filtra por Item Number del cliente.",
-        placeholder: "12345, 67890",
-        helper: "Introduce los Item Number relevantes. Aceptamos comas, saltos de línea o tabulaciones.",
-        icon: Tag
     }
 ];
 

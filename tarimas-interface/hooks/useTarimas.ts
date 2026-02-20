@@ -196,6 +196,7 @@ const buildExcelTarimas = (
         const trazabilidad = toNullableString(getCellValue(row, headerMap, HEADER_ALIASES.trazabilidad));
         const ordenBfx = toNullableString(getCellValue(row, headerMap, HEADER_ALIASES.ordenBfx));
         const loteCliente = toNullableString(getCellValue(row, headerMap, HEADER_ALIASES.loteCliente));
+        const po = loteCliente ?? ordenBfx;
         const piezas = toNullableNumber(getCellValue(row, headerMap, HEADER_ALIASES.piezas));
         const pallet = toNullableString(getCellValue(row, headerMap, HEADER_ALIASES.pallet));
 
@@ -236,7 +237,7 @@ const buildExcelTarimas = (
             unidad,
             almacen: 'EXCEL',
             cantidad: stock,
-            po: ordenBfx,
+            po,
             pesoBruto,
             pesoNeto,
             cajas: stock,
@@ -267,6 +268,64 @@ const buildExcelTarimas = (
 const findDestinySheetName = (sheetNames: string[]): string | null => {
     const match = sheetNames.find((sheetName) => sheetName.trim().toLowerCase() === 'destiny');
     return match ?? null;
+};
+
+const EXCEL_CACHE_STORAGE_KEY = 'tarimas_excel_cache_v1';
+
+type ExcelCachePayload = {
+    tarimas: Tarima[];
+    report: TarimasExcelImportReport;
+};
+
+const loadExcelCache = (): ExcelCachePayload | null => {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    try {
+        const raw = window.localStorage.getItem(EXCEL_CACHE_STORAGE_KEY);
+
+        if (!raw) {
+            return null;
+        }
+
+        const parsed = JSON.parse(raw) as Partial<ExcelCachePayload>;
+
+        if (!Array.isArray(parsed.tarimas) || !parsed.report) {
+            return null;
+        }
+
+        return {
+            tarimas: parsed.tarimas,
+            report: parsed.report as TarimasExcelImportReport,
+        };
+    } catch {
+        return null;
+    }
+};
+
+const saveExcelCache = (payload: ExcelCachePayload) => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(EXCEL_CACHE_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+        // Ignorar errores de almacenamiento (p.ej. cuota excedida).
+    }
+};
+
+const clearExcelCache = () => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    try {
+        window.localStorage.removeItem(EXCEL_CACHE_STORAGE_KEY);
+    } catch {
+        // Ignorar errores de almacenamiento.
+    }
 };
 
 export const useTarimas = () => {
@@ -309,6 +368,7 @@ export const useTarimas = () => {
             setTarimas(normalizedTarimas);
             setDataSource('endpoint');
             setExcelImportReport(null);
+            clearExcelCache();
         } catch (err) {
             if ((err as Error)?.name === 'AbortError') {
                 return;
@@ -366,6 +426,7 @@ export const useTarimas = () => {
             setTarimas(parsedTarimas);
             setDataSource('excel');
             setExcelImportReport(report);
+            saveExcelCache({ tarimas: parsedTarimas, report });
 
             return report;
         } catch (err) {
@@ -387,8 +448,16 @@ export const useTarimas = () => {
 
     useEffect(() => {
         const controller = new AbortController();
+        const cachedExcelData = loadExcelCache();
 
-        fetchTarimas(controller.signal);
+        if (cachedExcelData && cachedExcelData.tarimas.length > 0) {
+            setTarimas(cachedExcelData.tarimas);
+            setDataSource('excel');
+            setExcelImportReport(cachedExcelData.report);
+            setLoading(false);
+        } else {
+            fetchTarimas(controller.signal);
+        }
 
         return () => {
             controller.abort();

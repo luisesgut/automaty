@@ -7,9 +7,10 @@ interface TabNavigationProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   selectedCount: number;
+  showExcelTab?: boolean;
 }
 
-export default function TabNavigation({ activeTab, onTabChange, selectedCount }: TabNavigationProps) {
+export default function TabNavigation({ activeTab, onTabChange, selectedCount, showExcelTab = true }: TabNavigationProps) {
   const tabs = [
     {
       id: "tarimas" as ActiveTab,
@@ -41,7 +42,7 @@ export default function TabNavigation({ activeTab, onTabChange, selectedCount }:
       ),
       badge: null,
     },
-  ];
+  ].filter((tab) => (showExcelTab ? true : tab.id !== "excel"));
 
   return (
     <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
