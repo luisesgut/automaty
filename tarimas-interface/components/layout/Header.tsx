@@ -2,6 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RefreshCw, Loader2 } from "lucide-react";
+import Image from "next/image";
 
 interface HeaderProps {
     totalTarimas: number;
@@ -14,13 +15,15 @@ export default function Header({ totalTarimas, onRefresh, isLoading }: HeaderPro
         <header className="bg-white dark:bg-slate-800 border-b dark:border-slate-700 sticky top-0 z-20 shadow-sm">
             <div className="container mx-auto py-4 px-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                        <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                            Sistema de Gestión de Tarimas V2
-                        </h1>
-                        <p className="text-sm text-muted-foreground">
-                            Gestiona y procesa tu inventario de manera eficiente
-                        </p>
+                    <div>
+                        <Image
+                            src="/bioflex-logo.svg"
+                            alt="Bioflex"
+                            width={220}
+                            height={72}
+                            className="h-auto w-[180px] sm:w-[220px]"
+                            priority
+                        />
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
