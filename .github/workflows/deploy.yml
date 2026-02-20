@@ -1,0 +1,42 @@
+name: Deploy Next.js Dashboard to IIS
+
+on:
+  push:
+    branches: [ "main" ] # Verifica si tu rama principal es 'main' o 'master'
+
+jobs:
+  deploy:
+    # Usamos la etiqueta genérica para que el runner de tickets lo tome sin problemas
+    runs-on: self-hosted 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Deploy to IIS folder
+        run: |
+          # 1. Definimos las rutas para Next.js
+          $sourcePath = ".\out" 
+          $destinationPath = "C:\inetpub\wwwroot\Destiny"
+
+          # 2. Robocopy con el parche para el código 3 (Archivos Extras)
+          # /MIR borra lo viejo para que no queden archivos basura de builds anteriores
+          # /XF protege tu web.config para que no se pierdan tus reglas de redirección
+          robocopy $sourcePath $destinationPath /MIR /V /NP /XF web.config
+
+          # 3. Traductor de códigos: Cualquier código menor a 8 es ÉXITO para Robocopy
+          # Código 1 = Copió archivos nuevos
+          # Código 2 = Borró archivos extras
+          # Código 3 = Copió Y Borró (Lo más común en actualizaciones)
+          if ($lastexitcode -lt 8) { 
+              exit 0 
+          } else { 
+              exit $lastexitcode 
+          }
+        shell: powershell
