@@ -16,7 +16,7 @@ export default function Header({ totalTarimas, onRefresh, isLoading }: HeaderPro
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="space-y-1">
                         <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                            Sistema de Gestión de Tarimas
+                            Sistema de Gestión de Tarimas V2
                         </h1>
                         <p className="text-sm text-muted-foreground">
                             Gestiona y procesa tu inventario de manera eficiente
